@@ -254,6 +254,10 @@ struct Run {
     log: Logger,
     run_time: Timestamp,
     cutoff: Option<Timestamp>,
+    /// The $MFT loaded (for -m)
+    mft: Option<Mft>,
+    /// --csvf, --jsonf and --bodyf name the output of -f; a -m $MFT keeps the default names
+    custom_names: bool,
 }
 
 fn create_dir(dir: &Path, option: &str, log: &mut Logger) -> bool {
@@ -324,7 +328,7 @@ fn run(args: Args) -> Result<ExitCode, String> {
     };
     log.info(&format!("File type: {}\n", ft.name()));
 
-    let mut r = Run { args, log, run_time, cutoff };
+    let mut r = Run { args, log, run_time, cutoff, mft: None, custom_names: true };
     let ok = match ft {
         FileType::Mft => {
             let a = &r.args;
@@ -343,6 +347,37 @@ fn run(args: Args) -> Result<ExitCode, String> {
             process_mft(&mut r, &file)
         }
         FileType::Boot => process_boot(&mut r, &file),
+        FileType::UsnJournal | FileType::LogFile => {
+            if r.args.csv.is_none() && r.args.json.is_none() {
+                return Err("--csv or --json is required. Exiting".into());
+            }
+            let mut ok = true;
+            if let Some(m) = r.args.mft.clone() {
+                if !m.exists() {
+                    r.log.error(&format!("MFT file {} does not exist! Verify path and try again. Exiting\n", m.display()));
+                    return Ok(ExitCode::FAILURE);
+                }
+                match file_type(&m, &mut r.log) {
+                    Ok(FileType::Mft) => {}
+                    other => {
+                        r.log.error(&format!("File {} is not an MFT file!! Verify path and try again. Exiting", m.display()));
+                        return Ok(if matches!(other, Err(false)) { ExitCode::FAILURE } else { ExitCode::SUCCESS });
+                    }
+                }
+                r.custom_names = false;
+                ok &= process_mft(&mut r, &m);
+                r.custom_names = true;
+                if r.mft.is_none() {
+                    return Ok(if ok { ExitCode::SUCCESS } else { ExitCode::FAILURE });
+                }
+            }
+            if ft == FileType::UsnJournal {
+                ok &= process_j(&mut r, &file);
+            } else {
+                ok &= process_logfile(&mut r, &file);
+            }
+            ok
+        }
         FileType::Sds => {
             if r.args.csv.is_none() && r.args.ds.is_none() {
                 return Err("--csv or --ds is required. Exiting".into());
@@ -358,10 +393,6 @@ fn run(args: Args) -> Result<ExitCode, String> {
         FileType::Unknown => {
             r.log.error(&format!("Unknown file type! Send {} to saericzimmerman@gmail.com for assistance. Exiting", file.display()));
             true
-        }
-        other => {
-            r.log.error(&format!("{} files are not supported by this version yet", other.name()));
-            false
         }
     };
     Ok(if ok { ExitCode::SUCCESS } else { ExitCode::FAILURE })
@@ -382,7 +413,8 @@ fn open_out(path: &Path, bom: bool) -> std::io::Result<BufWriter<File>> {
     Ok(w)
 }
 
-/// ProcessMft: loads the $MFT and writes its outputs; false when it could not be read or an export failed
+/// ProcessMft: loads the $MFT (kept in r.mft) and writes its outputs; false when it could not be read or an export
+/// failed
 fn process_mft(r: &mut Run, file: &Path) -> bool {
     let sw = Instant::now();
     let load = ntfs_ez::mft::LoadOptions { recover_slack: r.args.rs, date_format: r.args.dt.clone() };
@@ -397,6 +429,16 @@ fn process_mft(r: &mut Run, file: &Path) -> bool {
         r.log.warning(w);
     }
     r.log.info(&format!("Processed {} in {:.4} seconds\n", file.display(), sw.elapsed().as_secs_f64()));
+    let ok = mft_outputs(r, &mft, file);
+    r.mft = Some(mft);
+    ok
+}
+
+fn custom(r: &Run, name: &Option<String>) -> Option<String> {
+    if r.custom_names { name.clone() } else { None }
+}
+
+fn mft_outputs(r: &mut Run, mft: &Mft, file: &Path) -> bool {
 
     let source = file.to_string_lossy().into_owned();
     r.log.info(&format!(
@@ -434,7 +476,7 @@ fn process_mft(r: &mut Run, file: &Path) -> bool {
         if !create_dir(&dir, "--body", &mut r.log) {
             return false;
         }
-        let p = out_name(r, &dir, &r.args.bodyf, "$MFT", "body");
+        let p = out_name(r, &dir, &custom(r, &r.args.bodyf), "$MFT", "body");
         r.log.info(&format!("\tBodyfile output will be saved to {}", p.display()));
         match open_out(&p, true) {
             Ok(w) => body = Some(w),
@@ -450,10 +492,10 @@ fn process_mft(r: &mut Run, file: &Path) -> bool {
         if !create_dir(&dir, "--csv", &mut r.log) {
             return false;
         }
-        let p = out_name(r, &dir, &r.args.csvf, "$MFT", "csv");
+        let p = out_name(r, &dir, &custom(r, &r.args.csvf), "$MFT", "csv");
         r.log.info(&format!("\tCSV output will be saved to {}", p.display()));
         if r.args.fl {
-            let fl = if r.args.csvf.as_deref().is_some_and(|s| !s.is_empty()) {
+            let fl = if custom(r, &r.args.csvf).as_deref().is_some_and(|s| !s.is_empty()) {
                 let stem = p.file_stem().unwrap_or_default().to_string_lossy();
                 let ext = p.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
                 p.with_file_name(format!("{stem}_FileListing{ext}"))
@@ -482,7 +524,7 @@ fn process_mft(r: &mut Run, file: &Path) -> bool {
         if !create_dir(&dir, "--json", &mut r.log) {
             return false;
         }
-        let p = out_name(r, &dir, &r.args.jsonf, "$MFT", "json");
+        let p = out_name(r, &dir, &custom(r, &r.args.jsonf), "$MFT", "json");
         r.log.info(&format!("\tJSON output will be saved to {}", p.display()));
         match open_out(&p, false) {
             Ok(w) => json = Some(w),
@@ -520,7 +562,7 @@ fn process_mft(r: &mut Run, file: &Path) -> bool {
                 .par_iter()
                 .map(|&b| {
                     let fr = mft.full_record(b);
-                    let out = export::record_rows(&mft, &fr, &options)?;
+                    let out = export::record_rows(mft, &fr, &options)?;
                     let mut s: [String; 4] = Default::default();
                     for row in &out.rows {
                         if want_csv {
@@ -907,4 +949,113 @@ fn process_i30(r: &mut Run, file: &Path) -> bool {
     }
     r.log.info("");
     true
+}
+
+fn process_logfile(r: &mut Run, _file: &Path) -> bool {
+    r.log.error("$LogFile files are not supported by this version yet");
+    false
+}
+
+/// ProcessJ: the $J's records, with parent paths rewound through the journal when there is an $MFT (-m)
+fn process_j(r: &mut Run, file: &Path) -> bool {
+    use ez_common::json::ServiceStackObject;
+    use ez_common::net::{flags_name, path_extension};
+    use ntfs_ez::usn::{FILE_ATTRIBUTE_NAMES, UPDATE_REASON_NAMES, Usn};
+    let sw = Instant::now();
+    let Some(bytes) = read_file(r, file) else { return false };
+    let usn = Usn::parse(&bytes);
+    report_problems(&mut r.log, file, "records", &usn.parse_errors);
+    r.log.info(&format!("\nProcessed {} in {:.4} seconds\n", file.display(), sw.elapsed().as_secs_f64()));
+    let source = file.to_string_lossy().into_owned();
+    let entries = &usn.entries;
+    r.log.info(&format!("Usn entries found in {source}: {}", n0(entries.len() as u64)));
+
+    let mut parent_paths: Option<Vec<String>> = None;
+    if let Some(mft) = &r.mft {
+        let sw = Instant::now();
+        let paths = ntfs_ez::usn::rewind_parent_paths(mft, entries);
+        let elapsed = sw.elapsed().as_secs_f64();
+        let mut current: std::collections::HashMap<ntfs_ez::mft::Key, String> = std::collections::HashMap::new();
+        let mut changed = 0u64;
+        for (e, p) in entries.iter().zip(&paths) {
+            let k = ntfs_ez::mft::Key { entry: e.parent_file_reference.entry_number, sequence: e.parent_file_reference.sequence_number as i32 };
+            let path = current.entry(k).or_insert_with(|| mft.full_path(k).into_owned());
+            if path != p {
+                changed += 1;
+            }
+        }
+        r.log.info(&format!(
+            "\tParent paths rewound through the journal in {elapsed:.4} seconds. {} differ from the $MFT alone (directories since deleted, reused, renamed or moved)",
+            n0(changed)
+        ));
+        parent_paths = Some(paths);
+    }
+
+    let dt = r.args.dt.clone();
+    let time = |e: &ntfs_ez::usn::UsnEntry| e.update_timestamp.and_then(Timestamp::from_filetime).unwrap_or(Timestamp::MIN);
+    let mut ok = true;
+    if let Some(dir) = r.args.csv.clone() {
+        if !create_dir(&dir, "--csv", &mut r.log) {
+            return false;
+        }
+        let p = out_name(r, &dir, &r.args.csvf, "$J", "csv");
+        r.log.info(&format!("\tCSV output will be saved to {}", p.display()));
+        let mut out = String::from("Name,Extension,EntryNumber,SequenceNumber,ParentEntryNumber,ParentSequenceNumber,ParentPath,UpdateSequenceNumber,UpdateTimestamp,UpdateReasons,FileAttributes,OffsetToData,SourceFile\r\n");
+        for (i, e) in entries.iter().enumerate() {
+            out.push_str(&csv_line(&[
+                e.name.clone(),
+                path_extension(&e.name).to_string(),
+                e.file_reference.entry_number.to_string(),
+                e.file_reference.sequence_number.to_string(),
+                e.parent_file_reference.entry_number.to_string(),
+                e.parent_file_reference.sequence_number.to_string(),
+                parent_paths.as_ref().map(|p| p[i].clone()).unwrap_or_default(),
+                e.update_sequence_number.to_string(),
+                time(e).format(&dt),
+                flags_name(e.update_reasons as i64, UPDATE_REASON_NAMES).replace(", ", "|"),
+                flags_name(e.file_attributes as i64, FILE_ATTRIBUTE_NAMES).replace(", ", "|"),
+                e.offset_to_data.to_string(),
+                source.clone(),
+            ]));
+        }
+        if let Err(err) = open_out(&p, true).and_then(|mut w| w.write_all(out.as_bytes()).and_then(|_| w.flush())) {
+            r.log.error(&format!("\nError exporting to CSV. Error: {err}"));
+            ok = false;
+        }
+    }
+    if let Some(dir) = r.args.json.clone() {
+        if !create_dir(&dir, "--json", &mut r.log) {
+            return false;
+        }
+        let p = out_name(r, &dir, &r.args.jsonf, "$J", "json");
+        r.log.info(&format!("\tJSON output will be saved to {}", p.display()));
+        let mut out = String::new();
+        for (i, e) in entries.iter().enumerate() {
+            let mut j = ServiceStackObject::new();
+            let empty = String::new();
+            j.string("Name", Some(&e.name))
+                .string("Extension", Some(path_extension(&e.name)))
+                .number("EntryNumber", e.file_reference.entry_number)
+                .number("SequenceNumber", e.file_reference.sequence_number)
+                .number("ParentEntryNumber", e.parent_file_reference.entry_number)
+                .number("ParentSequenceNumber", e.parent_file_reference.sequence_number)
+                .string("ParentPath", Some(parent_paths.as_ref().map(|p| &p[i]).unwrap_or(&empty)))
+                .number("UpdateSequenceNumber", e.update_sequence_number);
+            if let Some(t) = e.update_timestamp.and_then(Timestamp::from_filetime) {
+                j.raw("UpdateTimestamp", &format!("\"{}\"", t.to_json_string()));
+            }
+            j.string("UpdateReasons", Some(&flags_name(e.update_reasons as i64, UPDATE_REASON_NAMES).replace(", ", "|")))
+                .string("FileAttributes", Some(&flags_name(e.file_attributes as i64, FILE_ATTRIBUTE_NAMES).replace(", ", "|")))
+                .number("OffsetToData", e.offset_to_data)
+                .string("SourceFile", Some(&source));
+            out.push_str(&j.finish());
+            out.push('\n');
+        }
+        if let Err(err) = open_out(&p, false).and_then(|mut w| w.write_all(out.as_bytes()).and_then(|_| w.flush())) {
+            r.log.error(&format!("\nError exporting to JSON. Error: {err}"));
+            ok = false;
+        }
+    }
+    r.log.info("");
+    ok
 }

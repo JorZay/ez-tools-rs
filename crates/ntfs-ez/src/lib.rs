@@ -19,6 +19,7 @@ pub mod boot;
 pub mod i30;
 pub mod mft;
 pub mod sds;
+pub mod usn;
 
 pub use ez_common::time;
 pub use ez_common::{Diagnostic, Level};

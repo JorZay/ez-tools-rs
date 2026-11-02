@@ -189,6 +189,8 @@ pub struct Mft {
     dir_map: HashMap<Key, (String, Key)>,
     /// Directory key -> full path
     paths: HashMap<Key, String>,
+    /// Directories (records in use, then free): key (sequence - 1 as a ushort for free records), first name, parent
+    dir_list: Vec<(Key, String, Key)>,
     /// Records in use or free whose attributes could not all be parsed
     pub damaged: Vec<u32>,
     /// Messages the original logs while loading (fixups, timestamps, duplicate keys), in file order
@@ -291,6 +293,7 @@ impl Mft {
             extensions: HashMap::new(),
             dir_map: HashMap::new(),
             paths: HashMap::new(),
+            dir_list: Vec::new(),
             damaged: Vec::new(),
             warnings: Vec::new(),
         };
@@ -364,6 +367,8 @@ impl Mft {
             let names = s.names.iter().chain(exts.iter().flat_map(|&e| summaries[e as usize].names.iter()));
             if let Some((name, parent)) = names.into_iter().next() {
                 m.dir_map.entry(s.key).or_insert_with(|| (name.clone(), *parent));
+                let k = Key { entry: s.key.entry, sequence: s.key.sequence as u16 as i32 };
+                m.dir_list.push((k, name.clone(), *parent));
             }
         }
         for group in &unassociated {
@@ -415,6 +420,12 @@ impl Mft {
         }
         stack.reverse();
         stack.join("\\")
+    }
+
+    /// Directory records (in use, then free; extension records' names included): key, first name that is not a
+    /// DOS name, parent. A free record's key has its sequence number - 1 (as a ushort).
+    pub fn directory_names(&self) -> impl Iterator<Item = (Key, &str, Key)> {
+        self.dir_list.iter().map(|(k, n, p)| (*k, n.as_str(), *p))
     }
 
     /// The full path of a directory (the ParentPath of the files in it)
