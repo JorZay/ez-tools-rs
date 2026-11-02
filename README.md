@@ -56,7 +56,7 @@ wrapped, or an old copy whose last chunk was only partly written). For a merged 
 Copies that really differ (a tampered or damaged record) stay separate rows. The summary shows how many chunks and
 events were merged, per computer and channel.
 
-Sorting uses `--mem` MB (default 1024) of rows; past that, sorted runs go to compressed temporary files (in `--temp`
+Sorting uses `--mem` MB (default 256) of rows; past that, sorted runs go to compressed temporary files (in `--temp`
 or the system's temporary folder) and are merged, so the size of a case is not limited by memory.
 
 ## Differences from EvtxECmd

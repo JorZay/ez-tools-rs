@@ -98,7 +98,7 @@ struct Args {
     no_metrics: bool,
 
     /// Memory for sorting, in MB; past it, sorted rows go to temporary files
-    #[arg(long, value_name = "MB", default_value_t = 1024)]
+    #[arg(long, value_name = "MB", default_value_t = 256)]
     mem: usize,
 
     /// Folder for temporary files (default: the system's)

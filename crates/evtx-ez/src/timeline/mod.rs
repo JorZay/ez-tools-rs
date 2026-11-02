@@ -88,7 +88,7 @@ impl Default for Options<'_> {
             skip_identical_files: true,
             full_json: false,
             filter: Filter::default(),
-            memory_limit: 1 << 30,
+            memory_limit: 256 << 20,
             temp_dir: None,
             time_discrepancy_threshold: 1,
         }
