@@ -1,7 +1,7 @@
 //! JSON as ServiceStack.Text writes it (EZ tools' --json output): objects with their properties in order, null
 //! ones left out.
 
-/// A JSON string as ServiceStack.Text writes it: the usual short escapes, control characters as \uXXXX
+/// A JSON string as ServiceStack.Text writes it: the usual short escapes, control characters as \uXXXX (uppercase)
 pub fn service_stack_string(out: &mut String, s: &str) {
     use std::fmt::Write;
     out.push('"');
@@ -14,7 +14,7 @@ pub fn service_stack_string(out: &mut String, s: &str) {
             '\t' => out.push_str("\\t"),
             '\u{8}' => out.push_str("\\b"),
             '\u{c}' => out.push_str("\\f"),
-            c if c.is_control() => write!(out, "\\u{:04x}", c as u32).unwrap(),
+            c if c.is_control() => write!(out, "\\u{:04X}", c as u32).unwrap(),
             c => out.push(c),
         }
     }

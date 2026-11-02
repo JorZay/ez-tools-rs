@@ -6,7 +6,12 @@ pub const NEW_LINE: &str = "\r\n";
 /// A field as CsvHelper writes it: quoted when it has a quote, a comma or a line break, or starts or ends with a
 /// space; quotes doubled
 pub fn field(out: &mut String, s: &str) {
-    let quote = s.contains(['"', ',', '\r', '\n']) || s.starts_with(' ') || s.ends_with(' ');
+    field_with(out, s, ',');
+}
+
+/// A field as CsvHelper writes it with another delimiter
+pub fn field_with(out: &mut String, s: &str, delimiter: char) {
+    let quote = s.contains(['"', delimiter, '\r', '\n']) || s.starts_with(' ') || s.ends_with(' ');
     if !quote {
         out.push_str(s);
         return;

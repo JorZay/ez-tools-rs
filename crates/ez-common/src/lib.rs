@@ -5,6 +5,7 @@ pub mod cli;
 pub mod csv;
 pub mod dotnet;
 pub mod json;
+pub mod net;
 pub mod time;
 
 pub use time::Timestamp;
