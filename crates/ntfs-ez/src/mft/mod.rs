@@ -191,6 +191,8 @@ pub struct Mft {
     paths: HashMap<Key, String>,
     /// Directories (records in use, then free): key (sequence - 1 as a ushort for free records), first name, parent
     dir_list: Vec<(Key, String, Key)>,
+    /// Each block's record key (default for bad and uninitialized blocks)
+    pub block_keys: Vec<Key>,
     /// Records in use or free whose attributes could not all be parsed
     pub damaged: Vec<u32>,
     /// Messages the original logs while loading (fixups, timestamps, duplicate keys), in file order
@@ -294,6 +296,7 @@ impl Mft {
             dir_map: HashMap::new(),
             paths: HashMap::new(),
             dir_list: Vec::new(),
+            block_keys: summaries.iter().map(|s| s.key).collect(),
             damaged: Vec::new(),
             warnings: Vec::new(),
         };
@@ -428,6 +431,48 @@ impl Mft {
         self.dir_list.iter().map(|(k, n, p)| (*k, n.as_str(), *p))
     }
 
+    /// Mft.GetDirectoryContents: the names (not DOS names, not ".") whose parent is `key`: name, the record's key in
+    /// decimal ("entry-sequence", a free record's sequence - 1), whether it is a directory; directories first, then by
+    /// name. Every record is read again, so this is for one directory at a time.
+    pub fn directory_contents(&self, key: Key) -> Vec<(String, String, bool)> {
+        let order: Vec<u32> = self.in_use.iter().chain(self.free.iter()).copied().collect();
+        let mut found: Vec<(String, String, bool)> = order
+            .par_iter()
+            .flat_map_iter(|&b| {
+                let r = self.full_record(b);
+                let mut v = Vec::new();
+                if r.is_extension() || r.attributes.is_empty() {
+                    return v;
+                }
+                let k = r.key();
+                for (_, f) in r.file_names() {
+                    if f.name_type != NAME_TYPE_DOS && f.parent.key() == key && f.file_name != "." {
+                        v.push((f.file_name.clone(), format!("{}-{}", k.entry, k.sequence), r.is_directory()));
+                    }
+                }
+                v
+            })
+            .collect();
+        // directories first, then names as .NET's culture-aware comparer orders them
+        found.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| culture_cmp(&a.0, &b.0)));
+        found
+    }
+
+    /// The record keys of records in use (then free ones, when none is in use) for an entry number, in file order
+    pub fn keys_for_entry(&self, entry: u64) -> Vec<(Key, u32)> {
+        let pick = |list: &[u32]| -> Vec<(Key, u32)> {
+            list.iter().filter(|&&b| self.block_keys[b as usize].entry == entry).map(|&b| (self.block_keys[b as usize], b)).collect()
+        };
+        let v = pick(&self.in_use);
+        if v.is_empty() { pick(&self.free) } else { v }
+    }
+
+    /// The record in use (else free) with this key
+    pub fn find(&self, key: Key) -> Option<u32> {
+        let find = |list: &[u32]| list.iter().copied().find(|&b| self.block_keys[b as usize] == key);
+        find(&self.in_use).or_else(|| find(&self.free))
+    }
+
     /// The full path of a directory (the ParentPath of the files in it)
     pub fn full_path(&self, key: Key) -> std::borrow::Cow<'_, str> {
         match self.paths.get(&key) {
@@ -510,4 +555,26 @@ fn parse_block_with(b: &[u8], size: usize, i: usize, options: &LoadOptions) -> F
         r.warnings.push(String::new());
     }
     r
+}
+
+/// Strings as .NET's culture-aware comparer (ICU's root collation) orders them, for ASCII: white space, then
+/// punctuation, symbols, currency, digits and letters, case ignored first (then lowercase before uppercase). Other
+/// characters are compared by their lowercase value, after ASCII letters.
+pub fn culture_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    const ORDER: &str = "\t\n\x0b\x0c\r _-,;:!?.'\"()[]{}@*/\\&#%`^+<=>|~$0123456789aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ";
+    let primary = |c: char| -> (u32, u32) {
+        let l = c.to_lowercase().next().unwrap_or(c);
+        match ORDER.find(l) {
+            Some(i) => (0, i as u32),
+            None => (1, l as u32),
+        }
+    };
+    let pa: Vec<(u32, u32)> = a.chars().map(primary).collect();
+    let pb: Vec<(u32, u32)> = b.chars().map(primary).collect();
+    pa.cmp(&pb).then_with(|| {
+        // lowercase first
+        let ta: Vec<bool> = a.chars().map(char::is_uppercase).collect();
+        let tb: Vec<bool> = b.chars().map(char::is_uppercase).collect();
+        ta.cmp(&tb)
+    })
 }

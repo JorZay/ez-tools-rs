@@ -1,6 +1,8 @@
 //! mftecmd: NTFS metadata files ($MFT, $J, $LogFile, $Boot, $SDS, $I30) to CSV, JSON and bodyfile, as MFTECmd
 //! writes them.
 
+mod dump;
+
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -280,7 +282,7 @@ fn run(args: Args) -> Result<ExitCode, String> {
     } else {
         Level::Info
     };
-    let mut log = Logger::new(level, &args.dt);
+    let mut log = Logger::new(level, &args.dt).to_stdout();
     let run_time = Timestamp::now();
 
     if args.co {
@@ -650,9 +652,11 @@ fn mft_outputs(r: &mut Run, mft: &Mft, file: &Path) -> bool {
             }
         }
     }
-    if r.args.de.is_some() {
-        r.log.error("--de is not supported by this version yet");
-        return false;
+    if let Some(de) = r.args.de.clone() {
+        let dt = r.args.dt.clone();
+        if !dump::dump_entry(mft, &de, r.args.fls, &dt, &mut r.log) {
+            return false;
+        }
     }
     exported
 }

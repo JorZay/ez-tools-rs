@@ -11,6 +11,7 @@ pub struct Logger {
     level: Level,
     file: Option<(PathBuf, BufWriter<File>)>,
     prefix: bool,
+    stdout: bool,
 }
 
 fn code(level: Level) -> &'static str {
@@ -25,7 +26,13 @@ fn code(level: Level) -> &'static str {
 
 impl Logger {
     pub fn new(level: Level, _date_format: &str) -> Logger {
-        Logger { level, file: None, prefix: level <= Level::Debug }
+        Logger { level, file: None, prefix: level <= Level::Debug, stdout: false }
+    }
+
+    /// Messages to standard output instead of standard error (for tools that write no data there)
+    pub fn to_stdout(mut self) -> Logger {
+        self.stdout = true;
+        self
     }
 
     pub fn open_file(&mut self, path: &Path) -> std::io::Result<()> {
@@ -44,10 +51,11 @@ impl Logger {
         }
         let stamp = crate::time::Timestamp::now().format("HH:mm:ss.fff");
         for line in message.split('\n') {
-            if self.prefix && !line.is_empty() {
-                eprintln!("[{stamp} {}] {line}", code(level));
+            let text = if self.prefix && !line.is_empty() { format!("[{stamp} {}] {line}", code(level)) } else { line.to_string() };
+            if self.stdout {
+                println!("{text}");
             } else {
-                eprintln!("{line}");
+                eprintln!("{text}");
             }
             if let Some((_, f)) = &mut self.file {
                 if line.is_empty() {
