@@ -2,6 +2,7 @@
 //! them.
 
 use crate::output::json::ServiceStackObject;
+use ez_common::csv::field;
 use crate::time::Timestamp;
 use crate::timeline::Row;
 
@@ -13,24 +14,6 @@ pub const CSV_NEW_LINE: &str = "\r\n";
 
 /// EvtxECmd's default time format (--dt)
 pub const DEFAULT_DATE_FORMAT: &str = "yyyy-MM-dd HH:mm:ss.fffffff";
-
-/// A field as CsvHelper writes it: quoted when it has a quote, a comma or a line break, or starts or ends with a
-/// space; quotes doubled
-fn field(out: &mut String, s: &str) {
-    let quote = s.contains(['"', ',', '\r', '\n']) || s.starts_with(' ') || s.ends_with(' ');
-    if !quote {
-        out.push_str(s);
-        return;
-    }
-    out.push('"');
-    for c in s.chars() {
-        if c == '"' {
-            out.push('"');
-        }
-        out.push(c);
-    }
-    out.push('"');
-}
 
 /// Appends a CSV line (with its line ending). `source` is the SourceFile column; `date_format` is .NET's format for
 /// TimeCreated.

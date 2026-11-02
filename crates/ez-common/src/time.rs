@@ -44,6 +44,12 @@ impl Timestamp {
         Some(Timestamp(raw + FILETIME_EPOCH_TICKS))
     }
 
+    /// The current time
+    pub fn now() -> Timestamp {
+        let d = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+        Timestamp(UNIX_EPOCH_DAYS * TICKS_PER_DAY + (d.as_nanos() / 100) as i64)
+    }
+
     pub fn ticks(self) -> i64 {
         self.0
     }

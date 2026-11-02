@@ -1,6 +1,5 @@
 //! evtxecmd: event logs from forensic extractions into one CSV or JSON timeline, as EvtxECmd writes them.
 
-mod log;
 mod output;
 #[cfg(feature = "sync")]
 mod sync;
@@ -14,7 +13,7 @@ use clap::Parser;
 use evtx_ez::timeline::{self, FileStats, Filter, Observer, Order, SkipReason, discover};
 use evtx_ez::{Diagnostic, FileHeader, Level, MapSet, Timestamp};
 
-use log::Logger;
+use ez_common::cli::log::Logger;
 
 include!(concat!(env!("OUT_DIR"), "/maps.rs"));
 

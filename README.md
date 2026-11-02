@@ -1,7 +1,18 @@
-# evtxecmd-rs
+# ez-tools-rs
 
-A Rust port of Eric Zimmerman's [EvtxECmd](https://github.com/EricZimmerman/evtx): Windows event logs (EVTX) from
-forensic extractions into one CSV or JSON timeline, with EvtxECmd's columns, value formats and maps, and no .NET.
+Rust ports of Eric Zimmerman's forensic tools (https://github.com/EricZimmerman), with the same output and no .NET.
+Each tool is a library (which never prints or exits, so other programs can use it) and a thin command line client.
+
+| Tool | Status |
+|---|---|
+| [EvtxECmd](https://github.com/EricZimmerman/evtx) → `evtxecmd` | Done |
+| [MFTECmd](https://github.com/EricZimmerman/MFTECmd) → `mftecmd` | In progress (`docs/plans/mftecmd.md`) |
+| [RECmd](https://github.com/EricZimmerman/RECmd) → `recmd` | Planned (`docs/plans/recmd.md`) |
+
+## evtxecmd
+
+A port of EvtxECmd: Windows event logs (EVTX) from forensic extractions into one CSV or JSON timeline, with
+EvtxECmd's columns, value formats and maps.
 
 It adds what working on many extractions at once needs: any number of files and folders, one timeline sorted by
 time, and `--merge`, which collapses copies of the same log (an old and a new `Security.evtx`) into one row per event.
@@ -10,6 +21,7 @@ time, and `--merge`, which collapses copies of the same log (an old and a new `S
 
 | Path | What |
 |---|---|
+| `crates/ez-common` | What the tools share: .NET date and number formats, CSV and JSON as the EZ tools write them, the console log. |
 | `crates/evtx-ez` | The library: parsing, maps, the timeline (sorting, merging), CSV/JSON writers. No printing, no exits: it can go into another program. |
 | `crates/evtxecmd` | The command line tool, a thin client of the library. |
 | `maps/` | EvtxECmd's maps (from its repository, MIT), built into the binary. |

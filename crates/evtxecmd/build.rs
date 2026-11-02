@@ -3,7 +3,7 @@
 use std::path::Path;
 
 fn main() {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../maps");
+    let dir = Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("../../maps");
     println!("cargo:rerun-if-changed={}", dir.display());
     let mut names: Vec<String> = std::fs::read_dir(&dir)
         .expect("maps folder")

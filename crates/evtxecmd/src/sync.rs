@@ -3,7 +3,7 @@
 use std::io::{Cursor, Read};
 use std::path::Path;
 
-use crate::log::Logger;
+use ez_common::cli::log::Logger;
 
 const URL: &str = "https://github.com/EricZimmerman/evtx/archive/master.zip";
 const MAPS: &str = "evtx-master/evtx/Maps/";

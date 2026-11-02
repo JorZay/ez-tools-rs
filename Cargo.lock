@@ -281,6 +281,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "crc32fast",
+ "ez-common",
  "fancy-regex",
  "flate2",
  "lz4_flex",
@@ -297,10 +298,15 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "evtx-ez",
+ "ez-common",
  "rayon",
  "ureq",
  "zip",
 ]
+
+[[package]]
+name = "ez-common"
+version = "0.1.0"
 
 [[package]]
 name = "fancy-regex"

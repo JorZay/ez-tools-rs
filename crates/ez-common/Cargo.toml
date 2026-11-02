@@ -1,0 +1,10 @@
+[package]
+name = "ez-common"
+description = "Shared code for the EZ tool ports: .NET date/number formats, CSV/JSON writers, console log"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]

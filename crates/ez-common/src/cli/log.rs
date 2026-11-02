@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
-use evtx_ez::Level;
+use crate::Level;
 
 pub struct Logger {
     level: Level,
@@ -42,7 +42,7 @@ impl Logger {
         if level < self.level {
             return;
         }
-        let stamp = crate::output::utc_now().format("HH:mm:ss.fff");
+        let stamp = crate::time::Timestamp::now().format("HH:mm:ss.fff");
         for line in message.split('\n') {
             if self.prefix && !line.is_empty() {
                 eprintln!("[{stamp} {}] {line}", code(level));

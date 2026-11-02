@@ -22,7 +22,7 @@ pub mod file;
 pub mod maps;
 pub mod output;
 pub mod record;
-pub mod time;
+pub use ez_common::time;
 pub mod timeline;
 
 pub use chunk::{Chunk, ParseOptions};
@@ -32,19 +32,4 @@ pub use maps::MapSet;
 pub use record::EventRecord;
 pub use time::Timestamp;
 
-/// How important a [`Diagnostic`] is (EvtxECmd's log levels)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Level {
-    Trace,
-    Debug,
-    Info,
-    Warning,
-    Error,
-}
-
-/// A message about something found while parsing, as EvtxECmd logs it
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Diagnostic {
-    pub level: Level,
-    pub message: String,
-}
+pub use ez_common::{Diagnostic, Level};
