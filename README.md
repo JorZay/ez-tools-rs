@@ -6,8 +6,29 @@ Each tool is a library (which never prints or exits, so other programs can use i
 | Tool | Status |
 |---|---|
 | [EvtxECmd](https://github.com/EricZimmerman/evtx) → `evtxecmd` | Done |
-| [MFTECmd](https://github.com/EricZimmerman/MFTECmd) → `mftecmd` | In progress (`docs/plans/mftecmd.md`) |
+| [MFTECmd](https://github.com/EricZimmerman/MFTECmd) → `mftecmd` | Done |
 | [RECmd](https://github.com/EricZimmerman/RECmd) → `recmd` | Planned (`docs/plans/recmd.md`) |
+
+## mftecmd
+
+A port of MFTECmd: $MFT, $J, $LogFile, $Boot, $Secure:$SDS and $I30 to CSV, JSON and bodyfile, with MFTECmd's
+options (`-f`, `-m`, `--csv/--csvf`, `--json/--jsonf`, `--body/--bodyf/--bdl/--blf`, `--de`, `--fls`, `--dd/--do`,
+`--dr`, `--ds`, `--dt`, `--sn`, `--fl`, `--at`, `--rs`, `--ir/--re/--rm`, `--cutoff`, `--co`) and output names. The file
+type is detected from the content.
+
+```sh
+mftecmd -f '/cases/C/$MFT' --csv out
+mftecmd -f '/cases/C/$J' -m '/cases/C/$MFT' --csv out      # parent paths as they were when each record was written
+mftecmd -f '/cases/C/$LogFile' -m '/cases/C/$MFT' --json out
+mftecmd -f '/cases/C/$MFT' --body out --bdl c
+mftecmd -f '/cases/C/$MFT' --de 0x270-5
+```
+
+The library (`ntfs-ez`) memory maps the $MFT and reads it in two parallel passes instead of holding every record in
+memory: on a 1.6 GB $MFT, 4.5 s and 2 GB (mostly the mapped file) against MFTECmd's 36 s and 4.8 GB.
+
+Differences: `--vss`, `--dedupe` and `--lowmem` are accepted and ignored (live systems, .NET); .NET stack traces
+after some warnings are not printed. `tools/parity-mftecmd.sh` compares with the original.
 
 ## evtxecmd
 
@@ -24,9 +45,10 @@ time, and `--merge`, which collapses copies of the same log (an old and a new `S
 | `crates/ez-common` | What the tools share: .NET date and number formats, CSV and JSON as the EZ tools write them, the console log. |
 | `crates/evtx-ez` | The library: parsing, maps, the timeline (sorting, merging), CSV/JSON writers. No printing, no exits: it can go into another program. |
 | `crates/evtxecmd` | The command line tool, a thin client of the library. |
+| `crates/ntfs-ez`, `crates/mftecmd` | MFTECmd's libraries (MFT, Usn, LogFile, Boot, Secure, I30) and its command line tool. |
 | `maps/` | EvtxECmd's maps (from its repository, MIT), built into the binary. |
 | `tests/fixtures/rust-evtx` | Sample logs from [omerbenamram/evtx](https://github.com/omerbenamram/evtx) (MIT/Apache-2.0). |
-| `tools/parity.sh` | Compares this tool's output with the original EvtxECmd's on a folder of logs. |
+| `tools/parity.sh`, `tools/parity-mftecmd.sh` | Compare the tools' output with the originals'. |
 
 ## Use
 

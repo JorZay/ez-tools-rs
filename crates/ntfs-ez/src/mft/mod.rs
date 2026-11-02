@@ -193,6 +193,9 @@ pub struct Mft {
     dir_list: Vec<(Key, String, Key)>,
     /// Each block's record key (default for bad and uninitialized blocks)
     pub block_keys: Vec<Key>,
+    /// Record key -> block, for records in use and free ones
+    in_use_keys: HashMap<Key, u32>,
+    free_keys: HashMap<Key, u32>,
     /// Records in use or free whose attributes could not all be parsed
     pub damaged: Vec<u32>,
     /// Messages the original logs while loading (fixups, timestamps, duplicate keys), in file order
@@ -297,6 +300,8 @@ impl Mft {
             paths: HashMap::new(),
             dir_list: Vec::new(),
             block_keys: summaries.iter().map(|s| s.key).collect(),
+            in_use_keys: HashMap::new(),
+            free_keys: HashMap::new(),
             damaged: Vec::new(),
             warnings: Vec::new(),
         };
@@ -392,6 +397,8 @@ impl Mft {
             }
         }
 
+        m.in_use_keys = in_use_keys;
+        m.free_keys = free_keys;
         let keys: Vec<Key> = m.dir_map.keys().copied().collect();
         let paths: Vec<(Key, String)> = keys.par_iter().map(|k| (*k, m.walk_path(*k))).collect();
         m.paths = paths.into_iter().collect();
@@ -469,8 +476,7 @@ impl Mft {
 
     /// The record in use (else free) with this key
     pub fn find(&self, key: Key) -> Option<u32> {
-        let find = |list: &[u32]| list.iter().copied().find(|&b| self.block_keys[b as usize] == key);
-        find(&self.in_use).or_else(|| find(&self.free))
+        self.in_use_keys.get(&key).or_else(|| self.free_keys.get(&key)).copied()
     }
 
     /// The full path of a directory (the ParentPath of the files in it)

@@ -955,9 +955,119 @@ fn process_i30(r: &mut Run, file: &Path) -> bool {
     true
 }
 
-fn process_logfile(r: &mut Run, _file: &Path) -> bool {
-    r.log.error("$LogFile files are not supported by this version yet");
-    false
+/// LoadLogFile: parses with 4096 byte clusters, then again with the cluster size that makes the logged FILE records'
+/// target entries match their entry numbers best
+fn load_logfile(bytes: &[u8]) -> Result<ntfs_ez::logfile::LogFile, String> {
+    use ntfs_ez::logfile::{DEFAULT_FILE_RECORD_SIZE, LogFile};
+    let log = LogFile::parse(bytes, 4096)?;
+    let samples: Vec<(i64, u16, u16, u32)> = log
+        .records
+        .iter()
+        .filter_map(|r| r.ntfs.as_ref())
+        .filter_map(|n| n.file_record.as_ref().filter(|f| f.entry_number > 0).map(|f| (n.target_vcn, n.cluster_block_offset, n.target_block_size, f.entry_number)))
+        .take(5000)
+        .collect();
+    if samples.is_empty() {
+        return Ok(log);
+    }
+    let matches = |cluster: i64| {
+        samples
+            .iter()
+            .filter(|(vcn, cbo, tbs, e)| {
+                let size = if *tbs > 0 { *tbs as i64 * 512 } else { DEFAULT_FILE_RECORD_SIZE };
+                vcn.wrapping_mul(cluster).wrapping_add(*cbo as i64 * 512) / size == *e as i64
+            })
+            .count()
+    };
+    let (mut best, mut best_matches) = (4096i64, matches(4096));
+    let mut c = 512i64;
+    while c <= 2 * 1024 * 1024 {
+        let m = matches(c);
+        if m > best_matches {
+            best = c;
+            best_matches = m;
+        }
+        c *= 2;
+    }
+    if best == 4096 {
+        return Ok(log);
+    }
+    LogFile::parse(bytes, best)
+}
+
+/// ProcessLogFile: one row per log record, by LSN
+fn process_logfile(r: &mut Run, file: &Path) -> bool {
+    use ntfs_ez::logfile_rows::{CSV_HEADER, LogFileRows, write_csv, write_json};
+    let sw = Instant::now();
+    let Some(bytes) = read_file(r, file) else { return false };
+    let log = match load_logfile(&bytes) {
+        Ok(l) => l,
+        Err(e) => {
+            r.log.error(&format!("There was an error loading the file! Error: {e}"));
+            return true;
+        }
+    };
+    for w in &log.warnings {
+        r.log.warning(w);
+    }
+    r.log.info(&format!("\nProcessed {} in {:.4} seconds\n", file.display(), sw.elapsed().as_secs_f64()));
+    let source = file.to_string_lossy().into_owned();
+    r.log.info(&format!(
+        "{source}: LFS version {}.{}, page size 0x{:X}, cluster size {}{}",
+        log.major_version,
+        log.minor_version,
+        log.page_size,
+        n0(log.cluster_size as u64),
+        if log.restart_area.clean_dismount() { ", cleanly dismounted" } else { "" }
+    ));
+    if log.records.is_empty() {
+        r.log.info("Log records found: 0");
+    } else {
+        r.log.info(&format!(
+            "Log records found: {} (LSN {} to {}, current LSN {})",
+            n0(log.records.len() as u64),
+            n0(log.records.first().unwrap().lsn),
+            n0(log.records.last().unwrap().lsn),
+            n0(log.restart_area.current_lsn)
+        ));
+    }
+    report_problems(&mut r.log, file, "pages or records", &log.parse_errors);
+    let mut rows = LogFileRows::new(&log, r.mft.as_ref(), &source);
+    let all: Vec<_> = log.records.iter().map(|rec| rows.row(rec)).collect();
+    let dt = r.args.dt.clone();
+    let mut ok = true;
+    if let Some(dir) = r.args.csv.clone() {
+        if !create_dir(&dir, "--csv", &mut r.log) {
+            return false;
+        }
+        let p = out_name(r, &dir, &r.args.csvf, "$LogFile", "csv");
+        r.log.info(&format!("\tCSV output will be saved to {}", p.display()));
+        let mut out = String::from(CSV_HEADER);
+        for row in &all {
+            write_csv(&mut out, row, &dt);
+        }
+        if let Err(e) = open_out(&p, true).and_then(|mut w| w.write_all(out.as_bytes()).and_then(|_| w.flush())) {
+            r.log.error(&format!("\nError exporting to CSV. Error: {e}"));
+            ok = false;
+        }
+    }
+    if let Some(dir) = r.args.json.clone() {
+        if !create_dir(&dir, "--json", &mut r.log) {
+            return false;
+        }
+        let p = out_name(r, &dir, &r.args.jsonf, "$LogFile", "json");
+        r.log.info(&format!("\tJSON output will be saved to {}", p.display()));
+        let mut out = String::new();
+        for row in &all {
+            write_json(&mut out, row);
+        }
+        if let Err(e) = open_out(&p, false).and_then(|mut w| w.write_all(out.as_bytes()).and_then(|_| w.flush())) {
+            r.log.error(&format!("\nError exporting to JSON. Error: {e}"));
+            ok = false;
+        }
+    }
+    r.log.info("");
+    ok
 }
 
 /// ProcessJ: the $J's records, with parent paths rewound through the journal when there is an $MFT (-m)

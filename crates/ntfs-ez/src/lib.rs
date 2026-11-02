@@ -17,6 +17,8 @@
 
 pub mod boot;
 pub mod i30;
+pub mod logfile;
+pub mod logfile_rows;
 pub mod mft;
 pub mod sds;
 pub mod usn;

@@ -1,6 +1,6 @@
 # Plan: porting MFTECmd to Rust
 
-Status: planned, not started (2026-11-02). Waiting for the example files.
+Status: done (2026-11-02). All phases below are ported and compared with the original.
 
 ## Decisions
 
