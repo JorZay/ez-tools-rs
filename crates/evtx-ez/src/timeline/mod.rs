@@ -269,17 +269,21 @@ pub fn run(files: &[PathBuf], options: &Options, observer: &mut dyn Observer, si
     let merge = options.merge && options.order == Order::Time;
     let mut summary = Summary { files: files.len(), ..Default::default() };
 
+    // file index -> later files with the same bytes
+    let mut copies: HashMap<u32, Vec<u32>> = HashMap::new();
     let identical =
         if options.skip_identical_files { discover::identical_files(files) } else { vec![None; files.len()] };
-    let mut opened: Vec<(usize, EvtxFile)> = Vec::new();
+    // a file is unmapped once all its chunks are read (None)
+    let mut opened: Vec<(usize, Option<EvtxFile>)> = Vec::new();
     for (i, path) in files.iter().enumerate() {
         if let Some(j) = identical[i] {
+            copies.entry(j as u32).or_default().push(i as u32);
             observer.file_skipped(path, &SkipReason::IdenticalTo(files[j].clone()));
             summary.files_identical += 1;
             continue;
         }
         match EvtxFile::open(path) {
-            Ok(f) => opened.push((i, f)),
+            Ok(f) => opened.push((i, Some(f))),
             Err(Error::Parse(e)) => {
                 observer.file_skipped(path, &SkipReason::NotEventLog(e.message));
                 summary.files_not_event_logs += 1;
@@ -292,7 +296,7 @@ pub fn run(files: &[PathBuf], options: &Options, observer: &mut dyn Observer, si
     }
 
     let work: Vec<(usize, usize)> =
-        opened.iter().enumerate().flat_map(|(o, (_, f))| (0..f.block_count()).map(move |b| (o, b))).collect();
+        opened.iter().enumerate().flat_map(|(o, (_, f))| (0..f.as_ref().unwrap().block_count()).map(move |b| (o, b))).collect();
     let window = (rayon::current_num_threads() * 4).max(16);
 
     // the files that held each chunk read
@@ -314,18 +318,19 @@ pub fn run(files: &[PathBuf], options: &Options, observer: &mut dyn Observer, si
     // files without blocks are still reported
     let mut next_open = 0;
 
+    let mut released = 0;
     for batch in work.chunks(window) {
         let outcomes: Vec<Outcome> =
-            batch.par_iter().map(|&(o, b)| parse_block(&opened[o].1, b, options, &seen)).collect();
+            batch.par_iter().map(|&(o, b)| parse_block(opened[o].1.as_ref().unwrap(), b, options, &seen)).collect();
 
         for (&(o, b), outcome) in batch.iter().zip(outcomes) {
-            let (index, file) = (&opened[o].0, &opened[o].1);
+            let (index, file) = (&opened[o].0, opened[o].1.as_ref().unwrap());
             let path = &files[*index];
             if current.as_ref().is_none_or(|c| c.index != *index) {
                 finish_file(&mut current, observer, &mut summary);
                 while next_open < o {
                     // files before this one with no blocks
-                    let (i, f) = &opened[next_open];
+                    let (i, f) = (&opened[next_open].0, opened[next_open].1.as_ref().unwrap());
                     observer.file_started(&files[*i], f.header(), 0);
                     observer.file_finished(&files[*i], &empty_stats(f));
                     summary.files_processed += 1;
@@ -424,9 +429,16 @@ pub fn run(files: &[PathBuf], options: &Options, observer: &mut dyn Observer, si
                 }
             }
         }
+        // the files before the current one are done: unmap them
+        let done = next_open.saturating_sub(1);
+        for f in &mut opened[released.min(done)..done] {
+            f.1 = None;
+        }
+        released = released.max(done);
     }
     finish_file(&mut current, observer, &mut summary);
     for (i, f) in &opened[next_open.min(opened.len())..] {
+        let f = f.as_ref().unwrap();
         observer.file_started(&files[*i], f.header(), 0);
         observer.file_finished(&files[*i], &empty_stats(f));
         summary.files_processed += 1;
@@ -441,6 +453,13 @@ pub fn run(files: &[PathBuf], options: &Options, observer: &mut dyn Observer, si
 
     let mut write = |row: Row, chunks: &[u32], summary: &mut Summary| -> io::Result<()> {
         let mut ids: Vec<u32> = chunks.iter().flat_map(|c| chunk_files[*c as usize].iter().copied()).collect();
+        if merge {
+            // files skipped as byte-for-byte copies held the event too
+            let n = ids.len();
+            for k in 0..n {
+                ids.extend(copies.get(&ids[k]).into_iter().flatten().copied());
+            }
+        }
         ids.sort_unstable();
         ids.dedup();
         let sources: Vec<&Path> = ids.iter().map(|&i| files[i as usize].as_path()).collect();

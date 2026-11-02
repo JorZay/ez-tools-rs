@@ -91,7 +91,8 @@ fn copies_of_a_log_merge_into_one_row_per_event() {
         assert_eq!((a.time_created, a.event_record_id.as_deref(), &a.payload), (m.time_created, m.event_record_id.as_deref(), &m.payload));
     }
 
-    // events in the old copy list both files (and the wrapped copy); the rest, the new one and the wrapped one
+    // events in the old copy list every copy; the rest, every copy but the old one (the byte-for-byte copy was
+    // not read, but it held them too)
     let old_ids: std::collections::HashSet<String> = {
         let (rows, _) = run(std::slice::from_ref(&old), false);
         rows.into_iter().map(|(r, _)| r.event_record_id.unwrap()).collect()
@@ -100,9 +101,9 @@ fn copies_of_a_log_merge_into_one_row_per_event() {
     for (row, sources) in &merged {
         let id = row.event_record_id.as_deref().unwrap();
         if old_ids.contains(id) {
-            assert_eq!(sources, &vec![new.clone(), old.clone(), wrapped.clone()], "record {id}");
+            assert_eq!(sources, &vec![new.clone(), old.clone(), same.clone(), wrapped.clone()], "record {id}");
         } else {
-            assert_eq!(sources, &vec![new.clone(), wrapped.clone()], "record {id}");
+            assert_eq!(sources, &vec![new.clone(), same.clone(), wrapped.clone()], "record {id}");
         }
     }
     // only the records of the old copy's partly written chunk were parsed twice; the other copies' chunks were

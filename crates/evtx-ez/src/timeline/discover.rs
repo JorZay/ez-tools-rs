@@ -80,8 +80,13 @@ fn walk(dir: &Path, found: &mut Vec<PathBuf>, errors: &mut Vec<(PathBuf, io::Err
             files.push(path);
         }
     }
-    files.sort();
-    dirs.sort();
+    // case-insensitive name order, as Windows lists folders (and EvtxECmd reads them)
+    let key = |p: &PathBuf| {
+        let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        (name.to_lowercase(), name)
+    };
+    files.sort_by_key(key);
+    dirs.sort_by_key(key);
     found.extend(files);
     for d in dirs {
         walk(&d, found, errors);
