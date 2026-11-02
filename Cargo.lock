@@ -621,6 +621,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "recmd"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "ez-common",
+ "fancy-regex",
+ "registry-ez",
+ "sha1",
+ "ureq",
+ "yaml-rust2",
+ "zip",
+]
+
+[[package]]
 name = "regex-automata"
 version = "0.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -636,6 +650,15 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+
+[[package]]
+name = "registry-ez"
+version = "0.1.0"
+dependencies = [
+ "ez-common",
+ "fancy-regex",
+ "indexmap",
+]
 
 [[package]]
 name = "ring"
@@ -697,6 +720,17 @@ dependencies = [
  "ring",
  "rustls-pki-types",
  "untrusted",
+]
+
+[[package]]
+name = "sha1"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aacc4cc499359472b4abe1bf11d0b12e688af9a805fa5e3016f9a386dc2d0214"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest",
 ]
 
 [[package]]

@@ -7,7 +7,23 @@ Each tool is a library (which never prints or exits, so other programs can use i
 |---|---|
 | [EvtxECmd](https://github.com/EricZimmerman/evtx) → `evtxecmd` | Done |
 | [MFTECmd](https://github.com/EricZimmerman/MFTECmd) → `mftecmd` | Done |
-| [RECmd](https://github.com/EricZimmerman/RECmd) → `recmd` | Planned (`docs/plans/recmd.md`) |
+| [RECmd](https://github.com/EricZimmerman/RECmd) → `recmd` | Core done; plugins and rla next (`docs/plans/recmd.md`) |
+
+## recmd
+
+A port of RECmd: registry hives searched (`--sa/--sk/--sv/--sd/--ss`), keys dumped (`--kn`, `--vn`, `--details`), and
+batch files (`--bn`, RECmd's `.reb` files) to CSV or JSON, with RECmd's columns. Dirty hives get their transaction
+logs (`.LOG1/.LOG2`, or the old `.LOG`) applied; deleted keys and values are recovered (`--recover`, on by default).
+Plugins are not ported yet: the keys they decode show their raw values.
+
+```sh
+recmd -d /cases/host1 --bn BatchExamples/DFIRBatch.reb --csv out
+recmd -f /cases/host1/NTUSER.DAT --sk RunMRU
+recmd -f /cases/host1/SYSTEM --kn 'ControlSet001\Services\bam' --details
+```
+
+Differences: dates and numbers inside values are en-US as .NET writes them; SID conversions give the SID as on
+Windows; `--vss` is ignored. `tools/parity-recmd.sh` compares with the original.
 
 ## mftecmd
 
@@ -46,9 +62,10 @@ time, and `--merge`, which collapses copies of the same log (an old and a new `S
 | `crates/evtx-ez` | The library: parsing, maps, the timeline (sorting, merging), CSV/JSON writers. No printing, no exits: it can go into another program. |
 | `crates/evtxecmd` | The command line tool, a thin client of the library. |
 | `crates/ntfs-ez`, `crates/mftecmd` | MFTECmd's libraries (MFT, Usn, LogFile, Boot, Secure, I30) and its command line tool. |
+| `crates/registry-ez`, `crates/recmd` | RECmd's hive library (the Registry package) and its command line tool. |
 | `maps/` | EvtxECmd's maps (from its repository, MIT), built into the binary. |
 | `tests/fixtures/rust-evtx` | Sample logs from [omerbenamram/evtx](https://github.com/omerbenamram/evtx) (MIT/Apache-2.0). |
-| `tools/parity.sh`, `tools/parity-mftecmd.sh` | Compare the tools' output with the originals'. |
+| `tools/parity.sh`, `tools/parity-mftecmd.sh`, `tools/parity-recmd.sh` | Compare the tools' output with the originals'. |
 
 ## Use
 
