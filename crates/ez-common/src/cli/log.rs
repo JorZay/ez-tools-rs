@@ -21,6 +21,7 @@ fn code(level: Level) -> &'static str {
         Level::Info => "INF",
         Level::Warning => "WRN",
         Level::Error => "ERR",
+        Level::Fatal => "FTL",
     }
 }
 
@@ -81,6 +82,19 @@ impl Logger {
 
     pub fn error(&mut self, message: &str) {
         self.log(Level::Error, message);
+    }
+
+    pub fn fatal(&mut self, message: &str) {
+        self.log(Level::Fatal, message);
+    }
+
+    /// An empty line on the console only (Console.WriteLine, which the log file doesn't get)
+    pub fn blank(&mut self) {
+        if self.stdout {
+            println!();
+        } else {
+            eprintln!();
+        }
     }
 }
 

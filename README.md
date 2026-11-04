@@ -8,6 +8,19 @@ Each tool is a library (which never prints or exits, so other programs can use i
 | [EvtxECmd](https://github.com/EricZimmerman/evtx) → `evtxecmd` | Done |
 | [MFTECmd](https://github.com/EricZimmerman/MFTECmd) → `mftecmd` | Done |
 | [RECmd](https://github.com/EricZimmerman/RECmd) → `recmd` | Core done; plugins and rla next (`docs/plans/recmd.md`) |
+| [PECmd](https://github.com/EricZimmerman/PECmd) → `pecmd` | Done (`docs/plans/pecmd.md`) |
+
+The upstream commits each port was built from are in `docs/upstream.md`.
+
+## pecmd
+
+A port of PECmd: Windows Prefetch files, versions 17 (XP) to 31 (Windows 11, compressed), shown on the console or
+exported to CSV (with a time line), JSON and XHTML, with PECmd's columns.
+
+```
+pecmd -d /cases/host1/Prefetch --csv out -q
+pecmd -f /cases/host1/Prefetch/CMD.EXE-D269B812.pf
+```
 
 ## recmd
 
@@ -63,9 +76,10 @@ time, and `--merge`, which collapses copies of the same log (an old and a new `S
 | `crates/evtxecmd` | The command line tool, a thin client of the library. |
 | `crates/ntfs-ez`, `crates/mftecmd` | MFTECmd's libraries (MFT, Usn, LogFile, Boot, Secure, I30) and its command line tool. |
 | `crates/registry-ez`, `crates/recmd` | RECmd's hive library (the Registry package) and its command line tool. |
+| `crates/prefetch-ez`, `crates/pecmd` | The Prefetch library and PECmd's command line tool. |
 | `maps/` | EvtxECmd's maps (from its repository, MIT), built into the binary. |
 | `tests/fixtures/rust-evtx` | Sample logs from [omerbenamram/evtx](https://github.com/omerbenamram/evtx) (MIT/Apache-2.0). |
-| `tools/parity.sh`, `tools/parity-mftecmd.sh`, `tools/parity-recmd.sh` | Compare the tools' output with the originals'. |
+| `tools/parity.sh`, `tools/parity-mftecmd.sh`, `tools/parity-recmd.sh`, `tools/parity-pecmd.sh` | Compare the tools' output with the originals'. |
 
 ## Use
 

@@ -75,32 +75,7 @@ pub fn fold(s: &str) -> String {
     s.chars().map(upper_char).collect()
 }
 
-/// char.ToUpperInvariant
-pub fn upper_char(c: char) -> char {
-    if c.is_ascii() {
-        return c.to_ascii_uppercase();
-    }
-    let mut u = c.to_uppercase();
-    match (u.next(), u.next()) {
-        (Some(x), None) => x,
-        _ => c,
-    }
-}
-
-/// char.ToLowerInvariant
-pub fn lower_char(c: char) -> char {
-    if c.is_ascii() {
-        return c.to_ascii_lowercase();
-    }
-    if c == '\u{130}' {
-        return 'i';
-    }
-    let mut u = c.to_lowercase();
-    match (u.next(), u.next()) {
-        (Some(x), None) => x,
-        _ => c,
-    }
-}
+pub use ez_common::dotnet::{lower_invariant_char as lower_char, upper_invariant_char as upper_char};
 
 /// string.ToLowerInvariant
 pub fn lower(s: &str) -> String {

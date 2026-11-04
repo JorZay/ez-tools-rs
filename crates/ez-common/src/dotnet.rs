@@ -98,6 +98,43 @@ pub fn number_n(v: f64, decimals: usize) -> String {
     out
 }
 
+/// char.ToUpperInvariant
+pub fn upper_invariant_char(c: char) -> char {
+    if c.is_ascii() {
+        return c.to_ascii_uppercase();
+    }
+    let mut u = c.to_uppercase();
+    match (u.next(), u.next()) {
+        (Some(x), None) => x,
+        _ => c,
+    }
+}
+
+/// char.ToLowerInvariant
+pub fn lower_invariant_char(c: char) -> char {
+    if c.is_ascii() {
+        return c.to_ascii_lowercase();
+    }
+    if c == '\u{130}' {
+        return 'i';
+    }
+    let mut u = c.to_lowercase();
+    match (u.next(), u.next()) {
+        (Some(x), None) => x,
+        _ => c,
+    }
+}
+
+/// string.ToUpperInvariant, also the form OrdinalIgnoreCase compares strings in
+pub fn upper_invariant(s: &str) -> String {
+    s.chars().map(upper_invariant_char).collect()
+}
+
+/// string.ToLowerInvariant
+pub fn lower_invariant(s: &str) -> String {
+    s.chars().map(lower_invariant_char).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

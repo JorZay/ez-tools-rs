@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/ez-common", "crates/evtx-ez", "crates/evtxecmd", "crates/ntfs-ez", "crates/mftecmd", "crates/registry-ez", "crates/recmd"]
+members = ["crates/ez-common", "crates/evtx-ez", "crates/evtxecmd", "crates/ntfs-ez", "crates/mftecmd", "crates/registry-ez", "crates/recmd", "crates/prefetch-ez", "crates/pecmd"]
 
 [workspace.package]
 version = "0.1.0"

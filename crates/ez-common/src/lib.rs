@@ -18,6 +18,7 @@ pub enum Level {
     Info,
     Warning,
     Error,
+    Fatal,
 }
 
 /// A message about something found while parsing, as the original tool logs it

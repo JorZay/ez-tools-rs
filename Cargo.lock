@@ -571,10 +571,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "pecmd"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "ez-common",
+ "prefetch-ez",
+ "sha1",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
+
+[[package]]
+name = "prefetch-ez"
+version = "0.1.0"
+dependencies = [
+ "ez-common",
+]
 
 [[package]]
 name = "proc-macro2"
