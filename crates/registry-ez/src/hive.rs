@@ -59,12 +59,12 @@ pub enum ValueObj {
 }
 
 impl ValueObj {
-    /// KeyValue.ValueData: bytes as BitConverter.ToString writes them, anything else as ToString() (en-US)
-    pub fn text(&self) -> String {
+    /// KeyValue.ValueData: bytes as BitConverter.ToString writes them, anything else as ToString()
+    pub fn text(&self, culture: DateCulture) -> String {
         match self {
             ValueObj::Bytes(b) => net::hex(b),
             ValueObj::Text(s) => s.clone(),
-            ValueObj::FileTime(t) => en_us_date(*t),
+            ValueObj::FileTime(t) => culture.date(*t),
             ValueObj::UInt(v) => v.to_string(),
         }
     }
@@ -106,6 +106,8 @@ pub struct Hive {
     pub header: Header,
     pub hive_type: HiveType,
     pub recover_deleted: bool,
+    /// How dates inside values are written, and so searched
+    pub date_culture: DateCulture,
     pub nks: Vec<Nk>,
     pub vks: Vec<Vk>,
     pub keys: Vec<Key>,
@@ -142,6 +144,7 @@ impl Hive {
             header,
             hive_type,
             recover_deleted: false,
+            date_culture: DateCulture::default(),
             nks: vec![],
             vks: vec![],
             keys: vec![],
@@ -1122,7 +1125,7 @@ impl Hive {
         let mut hits = Vec::new();
         for k in self.mapped_keys() {
             for &v in &self.keys[k].values {
-                let data = self.value_data(v)?.text();
+                let data = self.value_data(v)?.text(self.date_culture);
                 if let Some(re) = regex {
                     if re.is_match(&data).unwrap_or(false) {
                         hits.push(SearchHit { key: k, value: Some(v), hit: term.to_string(), location: HitType::ValueData });
@@ -1208,7 +1211,7 @@ impl Hive {
         let mut hits = Vec::new();
         for k in self.mapped_keys() {
             for &v in &self.keys[k].values {
-                let data = self.value_data(v)?.text();
+                let data = self.value_data(v)?.text(self.date_culture);
                 if (data.trim().encode_utf16().count() as i64) < min as i64 {
                     continue;
                 }
@@ -1281,7 +1284,7 @@ fn lk_check(raw: &[u8]) -> NetResult<()> {
     Ok(())
 }
 
-/// The P format with the en-US culture (ICU): 3 decimals
+/// The P format with ICU: 3 decimals
 fn percent(v: f64) -> String {
     format!("{}%", ez_common::dotnet::number_n(v * 100.0, 3))
 }

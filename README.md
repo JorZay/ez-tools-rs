@@ -35,8 +35,8 @@ recmd -f /cases/host1/NTUSER.DAT --sk RunMRU
 recmd -f /cases/host1/SYSTEM --kn 'ControlSet001\Services\bam' --details
 ```
 
-Differences: dates and numbers inside values are en-US as .NET writes them; SID conversions give the SID as on
-Windows; `--vss` is ignored. `tools/parity-recmd.sh` compares with the original.
+Differences: dates inside values are always en-GB as .NET writes them (`03/07/2014 18:05:37 +00:00`), or en-US with
+`--en-us`, where the original follows the machine's language; SID conversions give the SID as on Windows; `--vss` is ignored. `tools/parity-recmd.sh` compares with the original.
 
 ## mftecmd
 

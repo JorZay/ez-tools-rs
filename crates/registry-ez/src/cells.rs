@@ -445,7 +445,7 @@ pub fn timespan(ticks: i64) -> String {
     out
 }
 
-/// A float's ToString() with the en-US culture (ICU): infinities are ∞
+/// A float's ToString() with ICU: infinities are ∞
 pub fn float_text(v: f64, single: bool) -> String {
     if v.is_infinite() {
         return if v > 0.0 { "∞".into() } else { "-∞".into() };
@@ -453,7 +453,35 @@ pub fn float_text(v: f64, single: bool) -> String {
     if single { ez_common::dotnet::dotnet_f32(v as f32) } else { ez_common::dotnet::dotnet_f64(v) }
 }
 
-/// DateTimeOffset.ToString() with the en-US culture (ICU, which puts a narrow no-break space before AM/PM)
-pub fn en_us_date(t: ez_common::Timestamp) -> String {
-    t.format("M/d/yyyy h:mm:ss\u{202F}tt zzz")
+/// The culture DateTimeOffset.ToString() follows. The original follows the machine's; numbers are the same in both.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DateCulture {
+    #[default]
+    EnGb,
+    EnUs,
+}
+
+impl DateCulture {
+    /// As .NET writes it with ICU, which in en-US puts a narrow no-break space before AM/PM
+    pub fn date(self, t: ez_common::Timestamp) -> String {
+        match self {
+            DateCulture::EnGb => t.format("dd/MM/yyyy HH:mm:ss zzz"),
+            DateCulture::EnUs => t.format("M/d/yyyy h:mm:ss\u{202F}tt zzz"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DateCulture;
+
+    #[test]
+    fn dates_as_dotnet_writes_them() {
+        let afternoon = ez_common::Timestamp::from_parts(2014, 7, 3, 18, 5, 37, 0).unwrap();
+        assert_eq!(DateCulture::EnGb.date(afternoon), "03/07/2014 18:05:37 +00:00");
+        assert_eq!(DateCulture::EnUs.date(afternoon), "7/3/2014 6:05:37\u{202F}PM +00:00");
+        let morning = ez_common::Timestamp::from_parts(2014, 12, 25, 6, 5, 37, 0).unwrap();
+        assert_eq!(DateCulture::EnGb.date(morning), "25/12/2014 06:05:37 +00:00");
+        assert_eq!(DateCulture::EnUs.date(morning), "12/25/2014 6:05:37\u{202F}AM +00:00");
+    }
 }

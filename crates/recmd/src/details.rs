@@ -3,7 +3,6 @@
 use ez_common::dotnet::n0;
 use ez_common::json::service_stack_string;
 use ez_common::net;
-use registry_ez::cells::en_us_date;
 use registry_ez::hive::{Hive, KeyId, ValueObj, VkId};
 
 /// SimpleKey as ServiceStack writes it (byte arrays as base64)
@@ -36,7 +35,7 @@ fn write_key(hive: &Hive, k: KeyId, out: &mut String) -> Result<String, String> 
         out.push_str(",\"ValueType\":");
         service_stack_string(out, &vk.type_name());
         out.push_str(",\"ValueData\":");
-        service_stack_string(out, &hive.value_data(v)?.text());
+        service_stack_string(out, &hive.value_data(v)?.text(hive.date_culture));
         out.push_str(&format!(
             ",\"DataRaw\":\"{}\",\"Slack\":\"{}\"}}",
             base64(&hive.value_raw(v)?),
@@ -83,7 +82,7 @@ const NK_FLAGS: &[(&str, i64)] = &[
 ];
 const KEY_FLAGS: &[(&str, i64)] = &[("Deleted", 1), ("HasActiveParent", 2)];
 
-/// --details: RegistryKey.ToString(), with the en-US culture
+/// --details: RegistryKey.ToString()
 pub fn key_text(hive: &Hive, k: KeyId) -> Result<String, String> {
     let mut sb = String::new();
     key_into(hive, k, &mut sb)?;
@@ -94,7 +93,7 @@ fn key_into(hive: &Hive, k: KeyId, sb: &mut String) -> Result<(), String> {
     use std::fmt::Write;
     let key = &hive.keys[k];
     let nk = hive.nk(k);
-    let date = en_us_date(nk.last_write()?);
+    let date = hive.date_culture.date(nk.last_write()?);
     writeln!(sb, "Key Name: {}", hive.key_name(k)).unwrap();
     writeln!(sb, "Key Path: {}\n", key.path).unwrap();
     writeln!(sb, "Last Write Time: {date}\n").unwrap();
@@ -199,14 +198,14 @@ fn value_text(hive: &Hive, v: VkId) -> Result<String, String> {
     let shown = match t {
         1 | 2 | 7 | 6 => match &data {
             ValueObj::Bytes(_) => "System.Byte[]".to_string(),
-            other => other.text(),
+            other => other.text(hive.date_culture),
         },
         0 | 3 | 8 | 0xA | 9 => match &data {
             ValueObj::Bytes(b) => net::hex(b),
             _ => return Err(cast("System.Byte[]")),
         },
         0x10 => match &data {
-            ValueObj::FileTime(d) => en_us_date(*d),
+            ValueObj::FileTime(d) => hive.date_culture.date(*d),
             _ => return Err(cast("System.DateTimeOffset")),
         },
         4 | 5 | 0xB => match &data {
