@@ -875,7 +875,7 @@ impl Run {
                     }
                 }
                 if self.args.details {
-                    let text = details::key_text(hive, k);
+                    let text = registry_ez::details::key_text(hive, k);
                     self.drain(hive);
                     self.log.info(&text?);
                 } else {

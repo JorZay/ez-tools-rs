@@ -3,6 +3,7 @@
 //! .LOG format) applied to dirty hives.
 
 pub mod cells;
+pub mod details;
 pub mod header;
 pub mod hive;
 pub mod replay;
