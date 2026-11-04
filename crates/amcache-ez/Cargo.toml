@@ -1,0 +1,16 @@
+[package]
+name = "amcache-ez"
+description = "Reads Windows Amcache data: Amcache.hve (Windows 7 to 11) and the Inventory*.db SQLite databases (Windows 11 26H1 on), as AmcacheParser does"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ez-common = { version = "0.1.0", path = "../ez-common" }
+registry-ez = { version = "0.1.0", path = "../registry-ez" }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+
+[dev-dependencies]
+flate2 = "1"

@@ -9,6 +9,7 @@ Each tool is a library (which never prints or exits, so other programs can use i
 | [MFTECmd](https://github.com/EricZimmerman/MFTECmd) → `mftecmd` | Done |
 | [RECmd](https://github.com/EricZimmerman/RECmd) → `recmd` | Core done; plugins and rla next (`docs/plans/recmd.md`) |
 | [PECmd](https://github.com/EricZimmerman/PECmd) → `pecmd` | Done (`docs/plans/pecmd.md`) |
+| [AmcacheParser](https://github.com/EricZimmerman/AmcacheParser) → `amcacheparser` | Done (`docs/plans/amcache.md`) |
 
 The upstream commits each port was built from are in `docs/upstream.md`.
 
@@ -37,6 +38,20 @@ recmd -f /cases/host1/SYSTEM --kn 'ControlSet001\Services\bam' --details
 
 Differences: dates inside values are always en-GB as .NET writes them (`03/07/2014 18:05:37 +00:00`), or en-US with
 `--en-us`, where the original follows the machine's language; SID conversions give the SID as on Windows; `--vss` is ignored. `tools/parity-recmd.sh` compares with the original.
+
+## amcacheparser
+
+Amcache.hve (Windows 7 to 11) and the `Inventory*.db` SQLite databases of Windows 11 26H1 on, to CSV:
+
+```
+amcacheparser -f /cases/host1/Amcache.hve --csv /tmp/out
+amcacheparser -f /cases/host1/Programs -i --csv /tmp/out --csvf host1.csv
+amcacheparser -f /cases/host1/Amcache.hve -b hashes.txt --csv /tmp/out
+```
+
+Transaction logs next to a dirty hive are applied, unless `--nl` is given. Databases are read from temporary copies
+(`--temp`), so nothing is written next to the evidence. Differences from the original are in `docs/plans/amcache.md`;
+`tools/parity-amcache.sh` compares with it.
 
 ## mftecmd
 
@@ -77,9 +92,10 @@ time, and `--merge`, which collapses copies of the same log (an old and a new `S
 | `crates/ntfs-ez`, `crates/mftecmd` | MFTECmd's libraries (MFT, Usn, LogFile, Boot, Secure, I30) and its command line tool. |
 | `crates/registry-ez`, `crates/recmd` | RECmd's hive library (the Registry package) and its command line tool. |
 | `crates/prefetch-ez`, `crates/pecmd` | The Prefetch library and PECmd's command line tool. |
+| `crates/amcache-ez`, `crates/amcacheparser` | The Amcache library and AmcacheParser's command line tool. |
 | `maps/` | EvtxECmd's maps (from its repository, MIT), built into the binary. |
 | `tests/fixtures/rust-evtx` | Sample logs from [omerbenamram/evtx](https://github.com/omerbenamram/evtx) (MIT/Apache-2.0). |
-| `tools/parity.sh`, `tools/parity-mftecmd.sh`, `tools/parity-recmd.sh`, `tools/parity-pecmd.sh` | Compare the tools' output with the originals'. |
+| `tools/parity.sh`, `tools/parity-mftecmd.sh`, `tools/parity-recmd.sh`, `tools/parity-pecmd.sh`, `tools/parity-amcache.sh` | Compare the tools' output with the originals'. |
 
 ## Use
 
