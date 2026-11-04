@@ -962,7 +962,8 @@ impl Hive {
             return Ok((slice(raw, 0xC, vk.length_internal.min(4) as i64)?.to_vec(), 0));
         }
         let free = vk.is_free();
-        let data_abs = 4096 + vk.offset_to_data as i64;
+        // uint arithmetic in the original: a damaged offset wraps around to the start of the file
+        let data_abs = 4096u32.wrapping_add(vk.offset_to_data) as i64;
         let size_raw = read_bytes(file, data_abs, 4);
         let mut block_size: i32 = 0;
         if size_raw.len() == 4 {
