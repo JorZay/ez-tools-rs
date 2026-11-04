@@ -88,6 +88,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "appcompatcache-ez"
+version = "0.1.0"
+dependencies = [
+ "ez-common",
+ "flate2",
+ "registry-ez",
+]
+
+[[package]]
+name = "appcompatcacheparser"
+version = "0.1.0"
+dependencies = [
+ "appcompatcache-ez",
+ "clap",
+ "ez-common",
+]
+
+[[package]]
 name = "arraydeque"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

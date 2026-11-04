@@ -10,6 +10,7 @@ Each tool is a library (which never prints or exits, so other programs can use i
 | [RECmd](https://github.com/EricZimmerman/RECmd) → `recmd` | Core done; plugins and rla next (`docs/plans/recmd.md`) |
 | [PECmd](https://github.com/EricZimmerman/PECmd) → `pecmd` | Done (`docs/plans/pecmd.md`) |
 | [AmcacheParser](https://github.com/EricZimmerman/AmcacheParser) → `amcacheparser` | Done (`docs/plans/amcache.md`) |
+| [AppCompatCacheParser](https://github.com/EricZimmerman/AppCompatCacheParser) → `appcompatcacheparser` | Done (`docs/plans/appcompatcache.md`) |
 
 The upstream commits each port was built from are in `docs/upstream.md`.
 
@@ -53,6 +54,18 @@ Transaction logs next to a dirty hive are applied, unless `--nl` is given. Datab
 (`--temp`), so nothing is written next to the evidence. Differences from the original are in `docs/plans/amcache.md`;
 `tools/parity-amcache.sh` compares with it.
 
+## appcompatcacheparser
+
+The AppCompatCache (ShimCache) of a SYSTEM hive, Windows XP to 11, to CSV:
+
+```
+appcompatcacheparser -f /cases/host1/SYSTEM --csv /tmp/out
+appcompatcacheparser -f /cases/host1/SYSTEM --csv /tmp/out -t -c 2
+```
+
+Transaction logs next to a dirty hive are replayed, unless `--nl` is given. Entries still in the slack of the value are
+recovered on Windows 8 to 11. `tools/parity-appcompatcache.sh` compares with the original.
+
 ## mftecmd
 
 A port of MFTECmd: $MFT, $J, $LogFile, $Boot, $Secure:$SDS and $I30 to CSV, JSON and bodyfile, with MFTECmd's
@@ -93,9 +106,10 @@ time, and `--merge`, which collapses copies of the same log (an old and a new `S
 | `crates/registry-ez`, `crates/recmd` | RECmd's hive library (the Registry package) and its command line tool. |
 | `crates/prefetch-ez`, `crates/pecmd` | The Prefetch library and PECmd's command line tool. |
 | `crates/amcache-ez`, `crates/amcacheparser` | The Amcache library and AmcacheParser's command line tool. |
+| `crates/appcompatcache-ez`, `crates/appcompatcacheparser` | The ShimCache library and AppCompatCacheParser's command line tool. |
 | `maps/` | EvtxECmd's maps (from its repository, MIT), built into the binary. |
 | `tests/fixtures/rust-evtx` | Sample logs from [omerbenamram/evtx](https://github.com/omerbenamram/evtx) (MIT/Apache-2.0). |
-| `tools/parity.sh`, `tools/parity-mftecmd.sh`, `tools/parity-recmd.sh`, `tools/parity-pecmd.sh`, `tools/parity-amcache.sh` | Compare the tools' output with the originals'. |
+| `tools/parity.sh`, `tools/parity-mftecmd.sh`, `tools/parity-recmd.sh`, `tools/parity-pecmd.sh`, `tools/parity-amcache.sh`, `tools/parity-appcompatcache.sh` | Compare the tools' output with the originals'. |
 
 ## Use
 

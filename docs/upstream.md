@@ -9,6 +9,7 @@ port is brought up to date.
 | `pecmd` | EricZimmerman/PECmd | `6586b8ab2417e4881b3e0166668ed3f1251204e3` | 2026-10-25 | 2026.10.3 | Exact |
 | `prefetch-ez` | EricZimmerman/Prefetch | `841212266356a9121a1c34ee538cbce2bb2b9cf3` | 2026-10-16 | PECmd references package 2026.10.1 | Exact |
 | `amcacheparser`, `amcache-ez` | EricZimmerman/AmcacheParser | `4706a080461d9506edbd6327bc58fc558978606d` | 2026-10-25 | 2026.10.1 | Exact |
+| `appcompatcacheparser`, `appcompatcache-ez` | EricZimmerman/AppCompatCacheParser | `694c0bba98b7a2edc78f8a8fd6975bf94d37cf8c` | 2026-10-25 | 2026.10.1 | Exact |
 | `recmd` | EricZimmerman/RECmd | `8d1955910964209500b6f74f169e3e52554838d7` | | 2026.10.3 | Exact |
 | `registry-ez` | EricZimmerman/Registry | not recorded (NuGet package 2026.10.1) | | 2026.10.1 | Package version only |
 | `evtxecmd`, `evtx-ez` | EricZimmerman/evtx | `fbf2f66736669689bfb95f735f7eca86d29d9800` | 2026-10-25 | | Estimate |

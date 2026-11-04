@@ -1,0 +1,15 @@
+[package]
+name = "appcompatcache-ez"
+description = "Reads the AppCompatCache (ShimCache) value of a SYSTEM hive, Windows XP to 11, as AppCompatCacheParser does"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ez-common = { version = "0.1.0", path = "../ez-common" }
+registry-ez = { version = "0.1.0", path = "../registry-ez" }
+
+[dev-dependencies]
+flate2 = "1"
