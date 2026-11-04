@@ -4,7 +4,8 @@
 #   tools/parity.sh <EvtxECmd.dll> <Maps folder> <folder of .evtx files> [work folder]
 #
 # The rows are compared in file order (--unsorted), as EvtxECmd writes them. Build the release binary first
-# (cargo build --release). EvtxECmd runs with `dotnet`; its own Maps and these must be the same.
+# (cargo build --release). EvtxECmd runs with `dotnet`; its own Maps and these must be the same. Outputs that match are
+# deleted right away; those that differ are kept.
 set -euo pipefail
 
 dll=$1 maps=$2 logs=$3
@@ -26,6 +27,7 @@ while IFS= read -r -d '' f; do
         fi
         if cmp -s "$work/ref/$n.$ext" "$work/ours/$n.$ext"; then
             same=$((same + 1))
+            rm -f "$work/ref/$n.$ext" "$work/ours/$n.$ext"
         else
             diff=$((diff + 1))
             echo "DIFF $f ($ext): $work/ref/$n.$ext $work/ours/$n.$ext"

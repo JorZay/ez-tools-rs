@@ -35,19 +35,24 @@ while IFS=$'\t' read -r file extra; do
             "$ours" "${args[@]}" "${more[@]}" > "$out.log" 2>&1
         fi
         echo $? > "$out.exit"
+        # default output names start with the time
+        for g in "$out"/*; do
+            base=$(basename "$g")
+            [[ "$base" =~ ^[0-9]{14}_ ]] && mv "$g" "$out/${base:15}"
+        done
     done
     if ! cmp -s "$work/$n-ref.exit" "$work/$n-ours.exit"; then
         diff=$((diff + 1))
         echo "DIFF exit code: $file $extra ($(cat "$work/$n-ref.exit") vs $(cat "$work/$n-ours.exit"))"
     fi
-    for f in $(cd "$work/$n-ref" && find . -type f | sort); do
+    while IFS= read -r f; do
         if cmp -s "$work/$n-ref/$f" "$work/$n-ours/$f"; then
             same=$((same + 1))
         else
             diff=$((diff + 1))
             echo "DIFF $file $extra: $f"
         fi
-    done
+    done < <(cd "$work/$n-ref" && find . -type f | sort)
     extra_files=$(cd "$work/$n-ours" && find . -type f | sort | while read -r f; do [ -e "$work/$n-ref/$f" ] || echo "$f"; done)
     [ -n "$extra_files" ] && { diff=$((diff + 1)); echo "EXTRA files from this port for $file: $extra_files"; }
 done
