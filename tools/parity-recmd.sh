@@ -6,8 +6,8 @@
 #
 # Each line of `cases` is the arguments of one run, e.g.
 #   -f "/hives/UsrClass 1.dat" --bn DFIRBatch.reb --csv {out} --csvf out.csv
-# (quoted as in a shell). {out} is replaced by the run's output folder; --co false is added. The original runs with LANG=en_GB.UTF-8, this
-# port's default; PARITY_EN_US=1 compares en-US instead, with --en-us on this port's side. Build the release binary first (cargo build --release).
+# (quoted as in a shell). {out} is replaced by the run's output folder; --co false is added. The original runs with LANG=en_US.UTF-8 (the
+# culture this port writes dates and numbers in). Build the release binary first (cargo build --release).
 set -uo pipefail
 
 dll=$1
@@ -15,10 +15,6 @@ work=${2:-$(mktemp -d)}
 here=$(cd "$(dirname "$0")/.." && pwd)
 ours="$here/target/release/recmd"
 same=0 diff=0 n=0
-ref_lang=en_GB.UTF-8 ours_flags=()
-if [ "${PARITY_EN_US:-}" = 1 ]; then
-    ref_lang=en_US.UTF-8 ours_flags=(--en-us)
-fi
 
 console() {
     # after the banner and the command line; without timings, stack traces and the folder name
@@ -34,9 +30,9 @@ while IFS= read -r line; do
         mkdir -p "$out"
         eval "args=(${line//\{out\}/\"$out\"})"
         if [ $side = ref ]; then
-            LANG=$ref_lang dotnet "$dll" "${args[@]}" --co false > "$out.log" 2>&1
+            LANG=en_US.UTF-8 dotnet "$dll" "${args[@]}" --co false > "$out.log" 2>&1
         else
-            "$ours" "${args[@]}" "${ours_flags[@]}" --co false > "$out.log" 2>&1
+            "$ours" "${args[@]}" --co false > "$out.log" 2>&1
         fi
         echo $? > "$out.exit"
     done

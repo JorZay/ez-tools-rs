@@ -33,7 +33,7 @@ fn write_key(hive: &Hive, k: KeyId, out: &mut String) -> Result<String, String> 
         out.push_str(",\"ValueType\":");
         service_stack_string(out, &vk.type_name());
         out.push_str(",\"ValueData\":");
-        service_stack_string(out, &hive.value_data(v)?.text(hive.date_culture));
+        service_stack_string(out, &hive.value_data(v)?.text());
         out.push_str(&format!(
             ",\"DataRaw\":\"{}\",\"Slack\":\"{}\"}}",
             base64(&hive.value_raw(v)?),

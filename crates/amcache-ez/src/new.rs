@@ -287,7 +287,7 @@ fn from_key(hive: &Hive, key: KeyId, sink: &Sink) -> Result<InventoryItem, Strin
     let mut values = Vec::with_capacity(hive.keys[key].values.len());
     for &v in &hive.keys[key].values {
         let vk = &hive.vks[v];
-        let data = hive.value_data(v)?.text(hive.date_culture);
+        let data = hive.value_data(v)?.text();
         sink.drain(hive);
         values.push(InventoryValue { name: vk.name()?.to_string(), data, is_deleted: vk.is_free() });
     }

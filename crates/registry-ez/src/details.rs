@@ -1,8 +1,9 @@
-//! RegistryKey.ToString(): what RECmd's --details shows, and what AmcacheParser logs for a key it could not parse.
+//! RegistryKey.ToString(), with the en-US culture: what RECmd's --details shows, and what AmcacheParser logs for a key it could not parse.
 
 use ez_common::dotnet::n0;
 use ez_common::net;
 
+use crate::cells::en_us_date;
 use crate::hive::{Hive, KeyId, ValueObj, VkId};
 
 const NK_FLAGS: &[(&str, i64)] = &[
@@ -36,7 +37,7 @@ fn key_into(hive: &Hive, k: KeyId, sb: &mut String) -> Result<(), String> {
     use std::fmt::Write;
     let key = &hive.keys[k];
     let nk = hive.nk(k);
-    let date = hive.date_culture.date(nk.last_write()?);
+    let date = en_us_date(nk.last_write()?);
     writeln!(sb, "Key Name: {}", hive.key_name(k)).unwrap();
     writeln!(sb, "Key Path: {}\n", key.path).unwrap();
     writeln!(sb, "Last Write Time: {date}\n").unwrap();
@@ -141,14 +142,14 @@ fn value_text(hive: &Hive, v: VkId) -> Result<String, String> {
     let shown = match t {
         1 | 2 | 7 | 6 => match &data {
             ValueObj::Bytes(_) => "System.Byte[]".to_string(),
-            other => other.text(hive.date_culture),
+            other => other.text(),
         },
         0 | 3 | 8 | 0xA | 9 => match &data {
             ValueObj::Bytes(b) => net::hex(b),
             _ => return Err(cast("System.Byte[]")),
         },
         0x10 => match &data {
-            ValueObj::FileTime(d) => hive.date_culture.date(*d),
+            ValueObj::FileTime(d) => en_us_date(*d),
             _ => return Err(cast("System.DateTimeOffset")),
         },
         4 | 5 | 0xB => match &data {

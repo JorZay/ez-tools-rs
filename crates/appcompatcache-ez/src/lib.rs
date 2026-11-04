@@ -267,7 +267,7 @@ fn load_hive(filename: &str, no_logs: bool, sink: &Sink) -> std::result::Result<
 fn is_32_bit(filename: &str, hive: &Hive, sink: &Sink) -> std::result::Result<bool, String> {
     let text = |key: KeyId, name: &str| -> std::result::Result<Option<String>, String> {
         let Some(v) = find_value(hive, key, name)? else { return Ok(None) };
-        let data = hive.value_data(v)?.text(hive.date_culture);
+        let data = hive.value_data(v)?.text();
         sink.drain(hive);
         Ok(Some(data))
     };

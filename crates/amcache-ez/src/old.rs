@@ -82,7 +82,7 @@ pub struct AmcacheOld {
 }
 
 fn data(hive: &Hive, v: VkId, sink: &Sink) -> Result<String, String> {
-    let text = hive.value_data(v)?.text(hive.date_culture);
+    let text = hive.value_data(v)?.text();
     sink.drain(hive);
     Ok(text)
 }

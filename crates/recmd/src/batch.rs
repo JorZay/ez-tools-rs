@@ -488,7 +488,7 @@ pub fn build_row(hive: &Hive, k: KeyId, key: &BatchKey, value: Option<VkId>, dt:
         deleted: nk.deleted.get(),
         last_write: nk.last_write()?,
     };
-    let data = |v: VkId| -> NetResult<String> { Ok(hive.value_data(v)?.text(hive.date_culture)) };
+    let data = |v: VkId| -> NetResult<String> { Ok(hive.value_data(v)?.text()) };
     if row.value_type == "RegBinary" {
         let v = value.unwrap();
         row.value_data = "(Binary data)".into();
@@ -553,7 +553,7 @@ fn convert(r: Result<String, String>, message: &str, v: VkId, hive: &Hive, warn:
         Ok(s) => Ok(s),
         Err(_) => {
             warn.push(message.into());
-            Ok(hive.value_data(v)?.text(hive.date_culture))
+            Ok(hive.value_data(v)?.text())
         }
     }
 }

@@ -7,7 +7,7 @@
 # Each line of `cases` is the arguments of one run, e.g.
 #   -f "/hives/Amcache.hve" -i --csv {out}/o --csvf o.csv
 # (quoted as in a shell). {out} is replaced by the run's output folder; --co false is added unless the line has --co.
-# The time at the start of default file names is removed before comparing. The original runs with LANG=en_GB.UTF-8, and
+# The time at the start of default file names is removed before comparing. The original runs with LANG=en_US.UTF-8, and
 # TZ=UTC as it reads dates with an offset as the machine's local time (this port gives UTC). Build the release binary first
 # (cargo build --release). The outputs are deleted at the end, as they hold copies of the data; PARITY_KEEP=1 keeps them,
 # to look at a difference.
@@ -41,7 +41,7 @@ while IFS= read -r line; do
         eval "args=(${line//\{out\}/\"$out\"})"
         case "$line" in *--co*) co=() ;; *) co=(--co false) ;; esac
         if [ $side = ref ]; then
-            TZ=UTC LANG=en_GB.UTF-8 dotnet "$dll" "${args[@]}" "${co[@]}" > "$out.log" 2>&1
+            TZ=UTC LANG=en_US.UTF-8 dotnet "$dll" "${args[@]}" "${co[@]}" > "$out.log" 2>&1
         else
             "$ours" "${args[@]}" "${co[@]}" > "$out.log" 2>&1
         fi

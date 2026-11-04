@@ -14,7 +14,6 @@ use std::time::Instant;
 use batch::{Batch, BatchKey, Row};
 use clap::{ArgAction, Parser};
 use ez_common::Level;
-use registry_ez::cells::DateCulture;
 use ez_common::cli::BOM;
 use ez_common::cli::log::Logger;
 use ez_common::dotnet::{n0, number_n};
@@ -136,11 +135,6 @@ struct Args {
     /// Deduplicate -f or -d based on SHA-1. First file found wins
     #[arg(long, action = ArgAction::Set, num_args = 0..=1, default_value_t = false, default_missing_value = "true", value_name = "BOOL")]
     dedupe: bool,
-
-    /// Write dates inside values, and search them, as en-US (7/3/2014 6:05:37 PM +00:00) instead of en-GB
-    /// (03/07/2014 18:05:37 +00:00)
-    #[arg(long = "en-us", action = ArgAction::Set, num_args = 0..=1, default_value_t = false, default_missing_value = "true", value_name = "BOOL")]
-    en_us: bool,
 
     /// Download the latest batch files from https://github.com/EricZimmerman/RECmd/tree/master/BatchExamples into
     /// BatchExamples next to this program, then exit
@@ -622,7 +616,6 @@ impl Run {
             }
         };
         hive.recover_deleted = self.args.recover;
-        hive.date_culture = if self.args.en_us { DateCulture::EnUs } else { DateCulture::EnGb };
 
         let dirname = match Path::new(hive_path).parent().map(|p| p.to_string_lossy().into_owned()) {
             Some(p) if !p.is_empty() => p,
@@ -758,7 +751,7 @@ impl Run {
                 }
                 HitType::ValueData => match h.value {
                     Some(v) if has_sd => {
-                        let data = hive.value_data(v)?.text(hive.date_culture);
+                        let data = hive.value_data(v)?.text();
                         Some(format!("\tKey: {key}, Value: {}, Data: {data}{del}", value_name(h.value)?))
                     }
                     _ => None,
@@ -900,7 +893,7 @@ impl Run {
                     for (i, &v) in hive.keys[k].values.iter().enumerate() {
                         self.log.info(&format!("\t------------ Value #{}{del} ------------", n0(i as u64)));
                         self.log.info(&format!("\tName: {} ({})", hive.vks[v].name()?, hive.vks[v].type_name()));
-                        let data = hive.value_data(v)?.text(hive.date_culture);
+                        let data = hive.value_data(v)?.text();
                         let slack = slack_text(&hive.value_slack(v)?);
                         self.drain(hive);
                         self.log.info(&format!("\tData: {data} {slack}"));
@@ -913,7 +906,7 @@ impl Run {
                 self.log.info(&format!("\tLast write time: {}", last_write(k)?));
                 self.log.info("");
                 self.log.info(&format!("\tValue name: {} ({})", hive.vks[v].name()?, hive.vks[v].type_name()));
-                let data = hive.value_data(v)?.text(hive.date_culture);
+                let data = hive.value_data(v)?.text();
                 let slack = slack_text(&hive.value_slack(v)?);
                 self.drain(hive);
                 self.log.info(&format!("\tValue data: {data} {slack}"));
