@@ -143,6 +143,15 @@ pub fn upper_invariant_char(c: char) -> char {
     if c.is_ascii() {
         return c.to_ascii_uppercase();
     }
+    match c {
+        // Rust gives these several characters; .NET its simple mapping
+        '\u{1F80}'..='\u{1F87}' | '\u{1F90}'..='\u{1F97}' | '\u{1FA0}'..='\u{1FA7}' => return char::from_u32(c as u32 + 8).unwrap_or(c),
+        '\u{1FB3}' | '\u{1FC3}' | '\u{1FF3}' => return char::from_u32(c as u32 + 9).unwrap_or(c),
+        // .NET keeps the dotless i
+        '\u{131}' => return c,
+        _ if newer_than_dotnet(c) => return c,
+        _ => {}
+    }
     let mut u = c.to_uppercase();
     match (u.next(), u.next()) {
         (Some(x), None) => x,
@@ -150,13 +159,19 @@ pub fn upper_invariant_char(c: char) -> char {
     }
 }
 
+/// Cased letters of a newer Unicode than .NET 10's, which .NET leaves as they are
+fn newer_than_dotnet(c: char) -> bool {
+    matches!(c, '\u{A7CE}' | '\u{A7CF}' | '\u{A7D2}'..='\u{A7D5}' | '\u{16EA0}'..='\u{16EB8}' | '\u{16EBB}'..='\u{16ED3}')
+}
+
 /// char.ToLowerInvariant
 pub fn lower_invariant_char(c: char) -> char {
     if c.is_ascii() {
         return c.to_ascii_lowercase();
     }
-    if c == '\u{130}' {
-        return 'i';
+    // .NET keeps the dotted capital I
+    if c == '\u{130}' || newer_than_dotnet(c) {
+        return c;
     }
     let mut u = c.to_lowercase();
     match (u.next(), u.next()) {
@@ -178,6 +193,22 @@ pub fn lower_invariant(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Every code point was compared with .NET 10's ToUpperInvariant and ToLowerInvariant; these are the ones Rust maps differently
+    #[test]
+    fn case_mapping_as_dotnet() {
+        assert_eq!(lower_invariant("\u{130}A\u{3A3}"), "\u{130}a\u{3C3}");
+        assert_eq!(upper_invariant("\u{131}a\u{DF}"), "\u{131}A\u{DF}");
+        assert_eq!(upper_invariant_char('\u{1F80}'), '\u{1F88}');
+        assert_eq!(upper_invariant_char('\u{1F97}'), '\u{1F9F}');
+        assert_eq!(upper_invariant_char('\u{1FA7}'), '\u{1FAF}');
+        assert_eq!(upper_invariant_char('\u{1FB3}'), '\u{1FBC}');
+        assert_eq!(upper_invariant_char('\u{1FF3}'), '\u{1FFC}');
+        assert_eq!(upper_invariant_char('\u{A7CF}'), '\u{A7CF}');
+        assert_eq!(lower_invariant_char('\u{A7CE}'), '\u{A7CE}');
+        assert_eq!(lower_invariant_char('\u{16EA0}'), '\u{16EA0}');
+        assert_eq!(upper_invariant_char('\u{16EBB}'), '\u{16EBB}');
+    }
 
     #[test]
     fn doubles_as_dotnet() {
