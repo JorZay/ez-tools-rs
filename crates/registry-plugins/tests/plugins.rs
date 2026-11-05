@@ -148,12 +148,12 @@ fn text(out: &Output, row: usize, column: &str) -> Option<String> {
 const FILETIME: u64 = 132_900_000_000_000_000;
 
 #[test]
-fn table_has_the_36_plugins_once_each() {
+fn table_has_the_40_plugins_once_each() {
     let mut names: Vec<_> = PLUGINS.iter().map(|p| p.type_name).collect();
-    assert_eq!(names.len(), 36);
+    assert_eq!(names.len(), 40);
     names.sort_unstable();
     names.dedup();
-    assert_eq!(names.len(), 36);
+    assert_eq!(names.len(), 40);
 }
 
 #[test]
@@ -274,4 +274,140 @@ fn etw_names_the_provider_by_its_guid() {
     assert_eq!(text(&out, 0, "Enabled").as_deref(), Some("1"));
     assert_eq!(text(&out, 1, "Provider").as_deref(), Some("Unmapped GUID: not a guid"));
     assert_eq!(text(&out, 1, "Enabled").as_deref(), Some(""));
+}
+
+// The shell item plugins
+
+fn u(text: &str) -> Vec<u8> {
+    text.encode_utf16().chain([0]).flat_map(u16::to_le_bytes).collect()
+}
+
+fn sized(body: &[u8]) -> Vec<u8> {
+    let mut b = ((body.len() + 2) as u16).to_le_bytes().to_vec();
+    b.extend_from_slice(body);
+    b
+}
+
+/// My Computer
+fn root_item() -> Vec<u8> {
+    let mut b = vec![0x1f, 0x50];
+    b.extend_from_slice(&[0xe0, 0x4f, 0xd0, 0x20, 0xea, 0x3a, 0x69, 0x10, 0xa2, 0xd8, 0x08, 0x00, 0x2b, 0x30, 0x30, 0x9d]);
+    sized(&b)
+}
+
+fn drive_item() -> Vec<u8> {
+    let mut b = vec![0x2f];
+    b.extend_from_slice(b"C:\\");
+    b.resize(23, 0);
+    sized(&b)
+}
+
+fn mru(list: &[i32]) -> Vec<u8> {
+    list.iter().chain(&[-1]).flat_map(|n| n.to_le_bytes()).collect()
+}
+
+fn concat(parts: &[&[u8]]) -> Vec<u8> {
+    parts.concat()
+}
+
+fn text_of<'a>(row: &'a registry_plugins::ValuesOut, name: &str) -> &'a str {
+    match &row.columns.iter().find(|(n, _)| *n == name).unwrap().1 {
+        Cell::Text(Some(t)) => t,
+        other => panic!("{name} is {other:?}"),
+    }
+}
+
+fn int_of(row: &registry_plugins::ValuesOut, name: &str) -> i32 {
+    match row.columns.iter().find(|(n, _)| *n == name).unwrap().1 {
+        Cell::Int(v) => v,
+        ref other => panic!("{name} is {other:?}"),
+    }
+}
+
+#[test]
+fn last_visited_lists_items_in_mru_order_and_keeps_going_after_a_bad_one() {
+    let tree = node(
+        "LastVisitedPidlMRU",
+        vec![
+            ("MRUListEx", Data::Binary(mru(&[1, 0]))),
+            ("0", Data::Binary(concat(&[&u("second.exe"), &root_item(), &drive_item(), &[0, 0]]))),
+            ("1", Data::Binary(concat(&[&u("first.exe"), &root_item()]))),
+            ("2", Data::Binary(concat(&[&u("past.exe"), &root_item(), &[0xff, 0xff, 0, 0]]))),
+        ],
+        vec![],
+    );
+    let h = hive("NTUSER.DAT", tree);
+    let (_, out) = run("LastVisitedPidlMRU", &h, h.root.unwrap());
+    let names: Vec<_> = out.rows.iter().map(|r| text_of(r, "Executable")).collect();
+    assert_eq!(names, ["past.exe", "first.exe", "second.exe"]);
+    assert_eq!(text_of(&out.rows[2], "AbsolutePath"), "This PC\\C:");
+    assert_eq!(int_of(&out.rows[1], "MruPosition"), 0);
+    assert!(matches!(out.rows[1].columns.iter().find(|(n, _)| *n == "OpenedOn").unwrap().1, Cell::Time(Some(_))));
+    assert_eq!(text_of(&out.rows[0], "AbsolutePath"), "This PC");
+    assert_eq!(out.errors.len(), 1);
+    assert!(out.errors[0].contains("has size 65535, past the end of the value"), "{:?}", out.errors);
+    assert!(text_of(&out.rows[0], "Details").contains("has size 65535"));
+}
+
+#[test]
+fn open_save_has_a_row_per_value_of_each_subkey() {
+    let tree = node(
+        "OpenSavePidlMRU",
+        vec![],
+        vec![
+            node("*", vec![("MRUListEx", Data::Binary(mru(&[0]))), ("0", Data::Binary(concat(&[&root_item(), &[0, 0]])))], vec![]),
+            node("pdf", vec![("0", Data::Binary(concat(&[&sized(&[0xfe, 1, 2]), &root_item()])))], vec![]),
+        ],
+    );
+    let h = hive("NTUSER.DAT", tree);
+    let (_, out) = run("OpenSavePidlMRU", &h, h.root.unwrap());
+    assert_eq!(out.rows.len(), 2);
+    // no MRUListEx: -1, so it comes first
+    assert_eq!(text_of(&out.rows[0], "Extension"), "pdf");
+    assert_eq!(int_of(&out.rows[0], "MruPosition"), -1);
+    assert_eq!(text_of(&out.rows[1], "Extension"), "*");
+    assert!(out.errors[0].contains("Unsupported ShellID: 0xfe"), "{:?}", out.errors);
+}
+
+#[test]
+fn taskband_reads_chunks_and_a_damaged_value_gives_no_rows() {
+    let mut favorites = vec![0u8];
+    let chunk = concat(&[&root_item(), &[0, 0]]);
+    favorites.extend_from_slice(&((chunk.len() + 4) as i32).to_le_bytes());
+    favorites.extend_from_slice(&chunk);
+    favorites.extend_from_slice(&[0, 0, 0, 0, 0xff]);
+    let h = hive("NTUSER.DAT", node("Taskband", vec![("Favorites", Data::Binary(favorites))], vec![]));
+    let (_, out) = run("Taskband", &h, h.root.unwrap());
+    assert_eq!(out.rows.len(), 1);
+    assert_eq!(text_of(&out.rows[0], "LnkName"), "This PC");
+    assert_eq!(text_of(&out.rows[0], "Executable"), "(unknown)");
+
+    let h = hive("NTUSER.DAT", node("Taskband", vec![("Favorites", Data::Binary(vec![0, 1]))], vec![]));
+    let (_, out) = run("Taskband", &h, h.root.unwrap());
+    assert!(out.rows.is_empty());
+    assert_eq!(out.errors, ["Error processing Favorites value '': Unable to read beyond the end of the stream."]);
+}
+
+#[test]
+fn recent_docs_sorts_by_extension_key_and_finds_when_it_was_last_opened() {
+    let item = |name: &str| {
+        let mut b = vec![36u8];
+        b.extend_from_slice(&[0; 11]);
+        b.extend_from_slice(&u(name));
+        sized(&b)
+    };
+    let doc = |target: &str, name: &str| Data::Binary(concat(&[&u(target), &item(name), &[0, 0]]));
+    let tree = node(
+        "RecentDocs",
+        vec![("MRUListEx", Data::Binary(mru(&[1, 0]))), ("0", doc("b.pdf", "b.lnk")), ("1", doc("a.txt", "a.lnk")), ("CachePrefix", Data::Text("x")), ("2", Data::Binary(u("noitem.txt")))],
+        vec![node(".pdf", vec![("MRUListEx", Data::Binary(mru(&[0]))), ("0", doc("b.pdf", "b.lnk"))], vec![])],
+    );
+    let h = hive("NTUSER.DAT", tree);
+    let (_, out) = run("RecentDocs", &h, h.root.unwrap());
+    let rows: Vec<_> = out.rows.iter().map(|r| (text_of(r, "Extension"), text_of(r, "TargetName"), int_of(r, "MruPosition"))).collect();
+    assert_eq!(rows, [("RecentDocs", "a.txt", 0), ("RecentDocs", "b.pdf", 1), (".pdf", "b.pdf", 0)]);
+    assert_eq!(text_of(&out.rows[1], "LnkName"), "b.lnk");
+    assert!(matches!(out.rows[1].columns.iter().find(|(n, _)| *n == "ExtensionLastOpened").unwrap().1, Cell::Time(Some(_))));
+    assert!(matches!(out.rows[0].columns.iter().find(|(n, _)| *n == "ExtensionLastOpened").unwrap().1, Cell::Time(None)));
+    assert_eq!(out.errors.len(), 1, "the value without an item");
 }

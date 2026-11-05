@@ -119,6 +119,15 @@ pub fn try_parse_i32(s: &str) -> Option<i32> {
     integer_text(s)?.parse().ok()
 }
 
+/// uint.TryParse: `-0` is a number too
+pub fn try_parse_u32(s: &str) -> Option<u32> {
+    let t = integer_text(s)?;
+    match t.strip_prefix('-') {
+        Some(digits) => digits.bytes().all(|c| c == b'0').then_some(0),
+        None => t.parse().ok(),
+    }
+}
+
 /// int.Parse
 pub fn parse_i32(s: &str) -> NetResult<i32> {
     let t = integer_text(s).ok_or_else(|| format_error(s))?;

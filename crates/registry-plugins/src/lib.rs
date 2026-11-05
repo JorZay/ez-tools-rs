@@ -6,6 +6,7 @@ mod apps;
 mod helpers;
 mod history;
 mod network;
+mod shell;
 mod system;
 
 use ez_common::json::ServiceStackObject;
@@ -224,13 +225,29 @@ pub static PLUGINS: &[Plugin] = &[
     plugin("ETW", "ETW", &[r"ControlSet001\Control\WMI\Autologger\EventLog-Application", r"ControlSet001\Control\WMI\Autologger\EventLog-System"], None, system::etw),
     plugin("FeatureUsage", "FeatureUsage", &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage"], None, history::feature_usage),
     plugin("JumplistData", "JumplistData", &[r"Software\Microsoft\Windows\CurrentVersion\Search\JumplistData"], None, history::jumplist_data),
+    plugin(
+        "LastVisitedPidlMRU",
+        "ComDlg32 LastVisitedPidlMRU",
+        &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\LastVisitedPidlMRU", r"Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\LastVisitedPidlMRULegacy"],
+        None,
+        shell::last_visited_pidl_mru,
+    ),
     plugin("NetworkAdapters", "NetworkAdapters", &[r"ControlSet00*\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}"], None, network::adapters),
     plugin("NetworkSettings", "NetworkSettings", &[r"ControlSet00*\Services\Tcpip\Parameters\Interfaces"], None, network::settings),
     plugin("NetworkSetup2", "NetworkSetup2", &[r"ControlSet00*\Control\NetworkSetup2"], None, network::setup2),
+    plugin("OpenSavePidlMRU", "ComDlg32 OpenSavePidlMRU", &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\OpenSavePidlMRU"], None, shell::open_save_pidl_mru),
     plugin("Products", "Products", &[r"Microsoft\Windows\CurrentVersion\Installer\UserData\*\Products", r"Classes\Installer\Products"], None, apps::products),
     plugin("ProfileList", "ProfileList", &[r"Microsoft\Windows NT\CurrentVersion\ProfileList"], None, system::profile_list),
     plugin("RADAR", "RADAR", &[r"Microsoft\RADAR\HeapLeakDetection", r"WOW6432Node\Microsoft\RADAR\HeapLeakDetection"], None, apps::radar),
+    plugin(
+        "RecentDocs",
+        "Recent documents",
+        &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs", r"Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs\*"],
+        None,
+        shell::recent_docs,
+    ),
     plugin("RunMRU", "RunMRU", &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU"], None, history::run_mru),
+    plugin("Taskband", "Taskband", &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband"], Some("Favorites"), shell::taskband),
     plugin("TerminalServerClient", "TerminalServerClient", &[r"Software\Microsoft\Terminal Server Client"], None, network::terminal_server_client),
     plugin("TypedURLs", "TypedURLs", &[r"Software\Microsoft\Internet Explorer\TypedURLs"], None, history::typed_urls),
     plugin(

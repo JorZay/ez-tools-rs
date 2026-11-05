@@ -1,8 +1,11 @@
 """Hives for the RECmd plugins: every plugin's key, with normal, missing, odd and damaged values, and a batch file for them."""
-#   python3 tools/gen-recmd-plugin-hives.py <work folder> <a raw AppCompatCache value, e.g. upstream's Win10Creators.bin>
+#   python3 tools/gen-recmd-plugin-hives.py <work folder> <a raw AppCompatCache value, e.g. upstream's Win10Creators.bin> [shell items]
+# [shell items]: a file of base64 shell items, one per line after a tab (ExtensionBlocks' samples): adds hives with them in the shell item
+# plugins' values, as they are and randomly damaged.
 # writes <work folder>/h (the hives), plugins.reb and cases, for tools/parity-recmd.sh
-import os, struct, sys
+import base64, os, random, struct, sys
 A, ACC = sys.argv[1], sys.argv[2]
+SAMPLES = sys.argv[3] if len(sys.argv) > 3 else None
 FT = 132900000000000000
 S = lambda t: (1, t.encode('utf-16-le') + b'\0\0')
 D = lambda n: (4, struct.pack('<I', n))
@@ -169,16 +172,91 @@ SOFTWARE_BAD = tree(('WOW6432Node\\Microsoft\\RADAR\\HeapLeakDetection', {'Diagn
 SOFTWARE_BAD2 = tree(('Microsoft\\RADAR\\HeapLeakDetection', {'ReflectionApplications': {'a.exe': {}}}))
 USRCLASS = tree(('Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository', {'Families': {'F': {'A': rv(('InstallTime', Q(FT)))}}, 'Packages': {'A': rv(('DisplayName', S('Name')))}}))
 USRCLASS2 = tree(('Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository', {'Families': {'F': {}}}))
+# Shell items for LastVisitedPidlMRU, OpenSavePidlMRU, Taskband and RecentDocs
+EXPLORER = 'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer'
+U = lambda t: t.encode('utf-16-le') + b'\0\0'
+def sized(b): return struct.pack('<H', len(b) + 2) + b
+def be4(name): return sized(struct.pack('<HI', 9, 0xbeef0004) + b'\x21\x48\0\0\x21\x48\0\0' + struct.pack('<H', 0x2e) + b'\0\0' + struct.pack('<IHH', 5, 0, 3) + b'\0' * 18 + U(name) + b'\0\0\x14\0')
+def be_text(sig, text): return sized(struct.pack('<HI', 0, sig) + b'\0\0' + U(text) + b'\x14\0')
+def fileitem(kind, short, long, *blocks): 
+    b = bytes([kind, 0]) + struct.pack('<I', 1234) + b'\x21\x48\0\x60\x20\0' + short.encode() + b'\0'
+    if len(b) % 2: b += b'\0'
+    return sized(b + be4(long) + b''.join(blocks) + b'\0\0')
+ROOT = sized(bytes([0x1f, 0x50]) + bytes.fromhex('e04fd020ea3a6910a2d808002b30309d'))
+DRIVE = sized(bytes([0x2f]) + b'C:\\'.ljust(22, b'\0'))
+PATHITEM = ROOT + DRIVE + fileitem(0x31, 'USERS', 'Users') + fileitem(0x32, 'LONGFI~1.PDF', 'long file, "x".pdf')
+UNKNOWN = sized(bytes([0xfe, 1, 2]))
+def mru(*n): return B(b''.join(struct.pack('<i', x) for x in n) + b'\xff\xff\xff\xff')
+def recent(target, item, end=b'\0\0'): return B(U(target) + item + end)
+def nameditem(kind, text, tail=b''):
+    name = text.encode('utf-16-le') if kind == 36 else text.encode('latin-1')
+    return sized(bytes([kind]) + b'\0' * 11 + name + b'\0\0' + tail)
+def favorites(*chunks, first=b'\0', marker=b'\0\0\0\0\xff'):
+    b = first
+    for c in chunks: b += struct.pack('<i', len(c) + 4) + c + marker
+    return B(b)
+PIN1 = fileitem(0x32, 'A.LNK', 'App One.lnk', be_text(0xbeef001d, 'C:\\apps\\one.exe'), be_text(0xbeef001e, 'User pinned'))
+PIN2 = fileitem(0x32, 'B.LNK', 'Bare.lnk')
+SHELL = tree(
+ (EXPLORER + '\\ComDlg32\\LastVisitedPidlMRU', rv(('MRUListEx', mru(1, 0, 3)), ('0', B(U('notepad.exe') + PATHITEM + b'\0\0')), ('1', B(U('first.exe') + ROOT + DRIVE + b'\0\0')), ('2', B(U('notinlist.exe') + ROOT)),
+   ('3', B(U('noitems.exe'))), ('name', B(U('name.exe') + ROOT)), ('4', B(U('past.exe') + ROOT + b'\xff\xff\0\0')), ('5', B(U('small.exe') + ROOT + b'\x02\0\0\0')), ('6', B(U('unknown.exe') + UNKNOWN + ROOT)), ('7', B(U('cut.exe') + sized(bytes([0x32, 0])) + ROOT)), ('8', B('noend'.encode('utf-16-le'))), ('9', B(b'')), ('10', S('text')))),
+ (EXPLORER + '\\ComDlg32\\LastVisitedPidlMRULegacy', rv(('MRUListEx', B(b'\1\0\0\0\xff')), ('0', B(U('never.exe') + ROOT)))),
+ (EXPLORER + '\\ComDlg32\\OpenSavePidlMRU', {'*': rv(('MRUListEx', mru(1, 0)), ('0', B(PATHITEM + b'\0\0')), ('1', B(ROOT + b'\0\0')), ('2', B(ROOT + DRIVE)), ('x', B(UNKNOWN))), 'pdf': rv(('0', B(ROOT + b'\xff\xff'))), 'odd': rv(('MRUListEx', B(b'\xff\xff\xff\xff'))), 'empty': {}}),
+ (EXPLORER + '\\Taskband', rv(('Favorites', favorites(PIN1 + PIN2 + fileitem(0x31, 'DIR', 'A folder', be_text(0xbeef001d, 'x'), be_text(0xbeef001e, 'y')), ROOT + UNKNOWN + sized(bytes([0x32, 0])) + b'\0\0')), ('Other', D(1)))),
+ (EXPLORER + '\\RecentDocs', {**rv(('MRUListEx', mru(2, 0, 2, 9)), ('0', recent('report.pdf', nameditem(36, 'report.lnk', be4('report long.lnk')))), ('1', recent('a folder', nameditem(36, 'folder.lnk'))), ('2', recent('sheet.XLSX', nameditem(0x32, 'sh\xe9et.lnk'), b'')),
+     ('3', recent('noitem.txt', b'')), ('4', recent('zero.txt', b'\0\0')), ('5', recent('short.txt', sized(b'\0'))), ('6', recent('bad.txt', nameditem(36, 'bad', struct.pack('<HHI', 12, 9, 0xbeef0004) + b'\1\2\3\4'))), ('ViewStream', B(b'\1\2')), ('CachePrefix', S('x')), ('-0', recent('minus.txt', nameditem(36, 'minus.lnk'))), (' 7 ', recent('space.tar.gz', nameditem(0x32, 'space.lnk'))), ('8', recent('dot.', nameditem(36, 'dot.lnk')))),
+   '.pdf': {**rv(('MRUListEx', mru(0)), ('0', recent('report.pdf', nameditem(36, 'report.lnk', be4('report long.lnk'))))), },
+   '.XLSX': rv(('MRUListEx', mru(4)), ('4', recent('other.xlsx', nameditem(36, 'o.lnk')))),
+   '.txt': rv(('0', recent('t.txt', nameditem(36, 't.lnk')))),
+   'Folder': rv(('MRUListEx', mru(0)), ('0', recent('a folder', nameditem(36, 'folder.lnk')))),
+   '.short': rv(('MRUListEx', B(b'\0\0')))}),
+)
+BAD_FAVORITES = [b'', b'\0', b'\0\1\2', struct.pack('<bi', 0, -1), struct.pack('<bi', 0, 0), struct.pack('<bi', 0, 2), struct.pack('<bi', 0, 0x7fffffff), favorites(ROOT, marker=b'')[1], favorites(ROOT + b'\1')[1], favorites(ROOT[:-2] + b'\xff\xff')[1], favorites(b'\xff\xff' + ROOT)[1]]
+EXTRA_HIVES = {f'ntuser_taskband{i}/NTUSER.DAT': ('ntuser.dat', tree((EXPLORER + '\\Taskband', rv(('Favorites', B(b)))))) for i, b in enumerate(BAD_FAVORITES)}
+EXTRA_HIVES['ntuser_shell/NTUSER.DAT'] = ('ntuser.dat', SHELL)
+EXTRA_HIVES['ntuser_shell_oddmru/NTUSER.DAT'] = ('ntuser.dat', tree((EXPLORER + '\\ComDlg32\\OpenSavePidlMRU', {'a': rv(('0', B(ROOT))), 'b': rv(('MRUListEx', B(b'\1\0')), ('0', B(ROOT))), 'c': rv(('0', B(DRIVE)))})))
+if SAMPLES:
+    items = [base64.b64decode(l.split('\t')[1]) for l in open(SAMPLES) if '\t' in l and not l.startswith('#')]
+    def damage(b, r):
+        b = bytearray(b)
+        m = r.randrange(5)
+        if m == 0:
+            for _ in range(r.randint(1, 4)): b[r.randrange(len(b))] = r.randrange(256)
+        elif m == 1: b = b[:r.randrange(len(b) + 1)]
+        elif m == 2:
+            i = r.randrange(len(b)); b[i:i + 2] = r.choice([b'\0\0', b'\xff\xff', b'\xff\x7f', b'\2\0', b'\1\0'])
+        elif m == 3: b += bytes(r.randrange(256) for _ in range(r.randint(1, 30)))
+        else:
+            i = r.randrange(len(b)); b[i:i + 4] = bytes(r.randrange(256) for _ in range(4))
+        return bytes(b)
+    def sample_hive(values, r):
+        lv = {'=MRUListEx': mru(*range(0, len(values), 2))}; os_ = dict(lv); rd = dict(lv)
+        for n, it in enumerate(values):
+            lv[f'={n}'] = B(U('app.exe') + it + b'\0\0'); os_[f'={n}'] = B(it + b'\0\0')
+            rd[f'={n}'] = B(U(f'doc{n % 7}.txt') + nameditem(36, 'n', it) + b'\0\0')
+        spec = tree((EXPLORER + '\\ComDlg32\\LastVisitedPidlMRU', lv), (EXPLORER + '\\ComDlg32\\OpenSavePidlMRU', {'*': os_}), (EXPLORER + '\\RecentDocs', rd), (EXPLORER + '\\Taskband', rv(('Favorites', favorites(*[v[:2000] for v in values[:40]])))))
+        return ('ntuser.dat', spec)
+    good = [i for i in items if len(i) >= 3]
+    EXTRA_HIVES['ntuser_samples/NTUSER.DAT'] = sample_hive(good, None)
+    for seed in range(1, 6):
+        r = random.Random(seed)
+        EXTRA_HIVES[f'ntuser_damaged{seed}/NTUSER.DAT'] = sample_hive([damage(r.choice(good), r) for _ in range(1500)], r)
+    # Taskband reads until something stops it, so a hive for each
+    r = random.Random(99)
+    for n in range(300):
+        vals = [damage(r.choice(good), r) for _ in range(r.randint(1, 3))]
+        EXTRA_HIVES[f'tb/{n}/NTUSER.DAT'] = ('ntuser.dat', tree((EXPLORER + '\\Taskband', rv(('Favorites', B(damage(favorites(*vals)[1], r)))))))
 H_ = {
  'amcache/Amcache.hve': ('Amcache.hve', AMCACHE), 'ntuser/NTUSER.DAT': ('ntuser.dat', NTUSER), 'ntuser_bad/NTUSER.DAT': ('ntuser.dat', NTUSER_BAD),
  'ntuser_bad2/NTUSER.DAT': ('ntuser.dat', NTUSER_BAD2), 'ntuser_bad3/NTUSER.DAT': ('ntuser.dat', NTUSER_BAD3), 'ntuser_bad4/NTUSER.DAT': ('ntuser.dat', NTUSER_BAD4), 'ntuser_bad5/NTUSER.DAT': ('ntuser.dat', NTUSER_BAD5),
  'system/SYSTEM': ('SYSTEM', SYSTEM), 'system_bad/SYSTEM': ('SYSTEM', SYSTEM_BAD), 'software/SOFTWARE': ('SOFTWARE', SOFTWARE), 'software_bad/SOFTWARE': ('SOFTWARE', SOFTWARE_BAD), 'software_bad2/SOFTWARE': ('SOFTWARE', SOFTWARE_BAD2),
  'usrclass/UsrClass.dat': ('UsrClass.dat', USRCLASS), 'usrclass2/UsrClass.dat': ('UsrClass.dat', USRCLASS2),
 }
+H_.update(EXTRA_HIVES)
 for p, (n, s) in H_.items(): write(f'{A}/h/{p}', n, s)
 PATHS = [
  ('Amcache', ['Root\\InventoryApplication', 'Root\\InventoryApplicationFile', 'Root\\InventoryApplicationShortcut', 'Root\\InventoryDeviceContainer', 'Root\\InventoryDevicePnp', 'Root\\InventoryDriverBinary', 'Root\\Mare']),
- ('NtUser', [('Software\\7-Zip\\Compression', 'ArcHistory'), ('Software\\7-Zip\\FM', 'CopyHistory'), ('Software\\7-Zip\\FM', 'FolderHistory'), ('Software\\7-Zip\\Extraction', 'PathHistory'), ('Software\\7-Zip', 'ArcHistory'), 'Software\\7-Zip\\FM', 'Software\\Adobe', 'Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags', 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths', 'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage', 'Software\\Microsoft\\Windows\\CurrentVersion\\Search\\JumplistData', 'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU', 'Software\\Microsoft\\Terminal Server Client', 'Software\\Microsoft\\Internet Explorer\\TypedURLs', 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall', 'Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository', 'Software\\WinRAR']),
+ ('NtUser', [EXPLORER + '\\ComDlg32\\LastVisitedPidlMRU', EXPLORER + '\\ComDlg32\\LastVisitedPidlMRULegacy', EXPLORER + '\\ComDlg32\\OpenSavePidlMRU', (EXPLORER + '\\Taskband', 'Favorites'), EXPLORER + '\\Taskband', EXPLORER + '\\RecentDocs', EXPLORER + '\\RecentDocs\\*', ('Software\\7-Zip\\Compression', 'ArcHistory'), ('Software\\7-Zip\\FM', 'CopyHistory'), ('Software\\7-Zip\\FM', 'FolderHistory'), ('Software\\7-Zip\\Extraction', 'PathHistory'), ('Software\\7-Zip', 'ArcHistory'), 'Software\\7-Zip\\FM', 'Software\\Adobe', 'Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags', 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths', 'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage', 'Software\\Microsoft\\Windows\\CurrentVersion\\Search\\JumplistData', 'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU', 'Software\\Microsoft\\Terminal Server Client', 'Software\\Microsoft\\Internet Explorer\\TypedURLs', 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall', 'Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository', 'Software\\WinRAR']),
  ('System', [('ControlSet00*\\Control\\Session Manager\\AppCompatCache', 'AppCompatCache'), 'ControlSet00*\\Control\\Session Manager\\AppCompatCache', 'ControlSet00*\\Services\\bam\\State\\UserSettings\\*', 'ControlSet00*\\Services\\bam\\UserSettings\\*', 'ControlSet00*\\Services\\dam\\UserSettings\\*', 'ControlSet00*\\Services\\BTHPORT\\Parameters\\Devices', 'ControlSet00*\\Control\\DeviceClasses', ('ControlSet00*\\Control\\Lsa', 'DsrmAdminLogonBehavior'), 'ControlSet00*\\Control\\Lsa', 'ControlSet001\\Control\\WMI\\Autologger\\EventLog-Application', 'ControlSet001\\Control\\WMI\\Autologger\\EventLog-System', 'ControlSet002\\Control\\WMI\\Autologger\\EventLog-Application', 'ControlSet00*\\Control\\Class\\{4d36e972-e325-11ce-bfc1-08002be10318}', 'ControlSet00*\\Services\\Tcpip\\Parameters\\Interfaces', 'ControlSet00*\\Control\\NetworkSetup2']),
  ('Software', ['Microsoft\\Windows\\CurrentVersion\\App Paths', 'Microsoft\\Windows\\CurrentVersion\\Uninstall', 'WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall', 'Microsoft\\Windows\\CurrentVersion\\Installer\\UserData\\*\\Products', 'Classes\\Installer\\Products', 'Microsoft\\Windows NT\\CurrentVersion\\ProfileList', 'Microsoft\\RADAR\\HeapLeakDetection', 'WOW6432Node\\Microsoft\\RADAR\\HeapLeakDetection', 'Microsoft\\Windows Search\\VolumeInfoCache', 'Microsoft\\Windows Portable Devices']),
  ('UsrClass', ['Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository']),

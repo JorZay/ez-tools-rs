@@ -130,6 +130,7 @@ fn has_beef0004(raw: &[u8]) -> bool {
 /// new ShellBag0X32
 pub fn new_0x32(raw: &[u8]) -> NetResult<ShellItem> {
     let mut item = ShellItem::new("ShellBag0X32", "File", raw);
+    item.value_is_null = true;
     let text_before = |short: &str, size: i32, modified: Option<Timestamp>| {
         let mut s = String::new();
         if !short.is_empty() {
@@ -150,6 +151,7 @@ pub fn new_0x32(raw: &[u8]) -> NetResult<ShellItem> {
         let len2 = i32::from(i16_at(raw, 30)?);
         let length = ((len1 + len2) * 2).max(0).min((raw.len() as i32 - 32).max(0));
         item.value = unicode_string(raw, 32, i64::from(length))?.replace('\0', "");
+        item.value_is_null = false;
         item.short_name = Some(String::new());
         item.set_before_line(Some(text_before("", 0, modified)));
         return Ok(item);
@@ -169,6 +171,7 @@ pub fn new_0x32(raw: &[u8]) -> NetResult<ShellItem> {
         let text = ansi_at(raw, index, raw.len() as i64 - index)?;
         let joined = split_nul_no_empty(&text).join("|");
         item.value = joined.clone();
+        item.value_is_null = false;
         item.set_before_line(Some(text_before(&joined, size, modified)));
         item.short_name = Some(joined);
         return Ok(item);
@@ -181,6 +184,7 @@ pub fn new_0x32(raw: &[u8]) -> NetResult<ShellItem> {
         let block = crate::blocks::from_bytes_or_error(bytes);
         if let crate::blocks::BlockKind::Beef0004 { long_name, .. } = &block.kind {
             item.value = long_name.clone();
+            item.value_is_null = false;
         }
         item.extension_blocks.push(block);
     }
@@ -609,6 +613,7 @@ fn ftp_sub_item(item: &mut ShellItem, zero: &mut Zero, raw: &[u8]) -> NetResult<
     };
     zero.short_name = ansi_at(raw, 0x26, ansi_length)?;
     item.value = unicode_string(raw, start, length * 2)?;
+    item.value_is_null = false;
     Ok(())
 }
 
@@ -623,6 +628,7 @@ fn zero_property_view(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
         let text = ansi_at(raw, 0xc, raw.len() as i64 - 0xc)?;
         let strings: Vec<&str> = text.split('\0').collect();
         item.value = format!("{} ({})", strings[0], strings[1..].join(","));
+        item.value_is_null = false;
         return Ok(());
     }
     array_copy(raw, index, i64::from(identifier_size))?;
@@ -646,16 +652,19 @@ fn zero_property_view(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
         if raw.len() > 0x28 && (raw[0x28] == 0x2f || (raw[0x24] == 0x4e && raw[0x26] == 0x2f && raw[0x28] == 0x41)) {
             let zip = new_zip_contents(raw)?;
             item.friendly_name = zip.friendly_name;
+            item.value_is_null = zip.value_is_null;
             item.value = zip.value;
             return Ok(());
         }
         if raw.len() > 8 && raw[4..8] == *b"AugM" {
             let cd = new_cd_burn(raw)?;
             item.friendly_name = cd.friendly_name;
+            item.value_is_null = cd.value_is_null;
             item.value = cd.value;
             return Ok(());
         }
         item.value = "No Property sheets found".to_string();
+        item.value_is_null = false;
     }
     index += i64::from(list_size) + 2;
     if list_size > 0 && index + 2 <= raw.len() as i64 {
@@ -672,6 +681,7 @@ fn zero_property_view(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
     }
     if let Some(first) = item.property_stores.first() {
         item.value = view_value(first, "No Property sheet value found");
+        item.value_is_null = false;
     }
     Ok(())
 }
@@ -686,6 +696,7 @@ fn zero_view_guid(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
     index += 2;
     if identifier_size > 0 {
         item.value = guid_name(&guid_text(array_copy(raw, index, 16)?)?);
+        item.value_is_null = false;
         index += 16;
     }
     if store_size > 0 {
@@ -749,10 +760,12 @@ fn zero_parts(item: &mut ShellItem, zero: &Zero) {
 /// new ShellBag0X00
 pub fn new_0x00(raw: &[u8]) -> NetResult<ShellItem> {
     let mut item = ShellItem::new("ShellBag0X00", "Variable", raw);
+    item.value_is_null = true;
     let mut zero = Zero::default();
     match u32_at(raw, 4)? {
         0x94606aeb => {
             item.value = ansi_at(raw, 0x14, 0x40)?;
+            item.value_is_null = false;
             zero_parts(&mut item, &zero);
             return Ok(item);
         }
@@ -769,6 +782,7 @@ pub fn new_0x00(raw: &[u8]) -> NetResult<ShellItem> {
         0x10 => {
             item.friendly_name = "ZipFileContents".to_string();
             let zip = new_0x65(raw)?;
+            item.value_is_null = zip.value_is_null;
             item.value = zip.value;
             zero.modified = if byte_at(raw, 4)? == 0x10 { Some(from_file_time(i64_at(raw, 16)?)) } else { None };
             item.last_modification = zero.modified;
@@ -801,6 +815,7 @@ pub fn new_0x00(raw: &[u8]) -> NetResult<ShellItem> {
         0x04152004 => {
             let text = unicode_string(raw, 0x76, raw.len() as i64 - 0x76)?;
             item.value = text.split('\0').next().unwrap_or_default().to_string();
+            item.value_is_null = false;
             zero_parts(&mut item, &zero);
             return Ok(item);
         }
@@ -808,6 +823,7 @@ pub fn new_0x00(raw: &[u8]) -> NetResult<ShellItem> {
             if raw.len() <= 0x60 {
                 item.friendly_name = "Server name".to_string();
                 item.value = unicode_string(raw, 6, raw.len() as i64 - 6)?.replace('\0', "");
+                item.value_is_null = false;
             } else {
                 zero_property_view(&mut item, raw)?;
             }

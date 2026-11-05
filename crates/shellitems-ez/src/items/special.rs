@@ -398,6 +398,7 @@ fn split_blocks(raw: &[u8], mut index: i64) -> NetResult<Vec<&[u8]>> {
 
 pub fn new_cd_burn(raw: &[u8]) -> NetResult<ShellItem> {
     let mut item = ShellItem::new("ShellBagCDBurn", "CDBurn", raw);
+    item.value_is_null = true;
     if i32_at(raw, 4)? != 0x4d677541 {
         return Err("Invalid signature!".to_string());
     }
@@ -425,6 +426,7 @@ pub fn new_cd_burn(raw: &[u8]) -> NetResult<ShellItem> {
             let block = crate::blocks::from_bytes_or_error(buffer);
             if let crate::blocks::BlockKind::Beef0004 { long_name, .. } = &block.kind {
                 item.value = long_name.clone();
+                item.value_is_null = false;
             }
             item.extension_blocks.push(block);
             at += i64::from(block_size);
@@ -449,6 +451,7 @@ pub fn new_cd_burn(raw: &[u8]) -> NetResult<ShellItem> {
 
 pub fn new_cfsf(raw: &[u8]) -> NetResult<ShellItem> {
     let mut item = ShellItem::new("ShellBagCFSF", "Users Files Folder", raw);
+    item.value_is_null = true;
     u16_at(raw, 4)?;
     if i32_at(raw, 6)? != 0x46534643 {
         return Err("Invalid signature at offset 0x06! Should be CFSF!".to_string());
@@ -485,6 +488,7 @@ pub fn new_cfsf(raw: &[u8]) -> NetResult<ShellItem> {
         let block = crate::blocks::from_bytes_or_error(bytes);
         if let crate::blocks::BlockKind::Beef0004 { long_name, .. } = &block.kind {
             item.value = long_name.clone();
+            item.value_is_null = false;
         }
         item.extension_blocks.push(block);
     }

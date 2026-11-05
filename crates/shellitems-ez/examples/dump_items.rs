@@ -1,4 +1,4 @@
-//! Dumps shell items as target/oracle's .NET dump does, to compare the two: dump_items <samples file>
+//! Dumps shell items as the .NET dump in ez-tools-oracle does, to compare the two: dump_items <samples file>
 use shellitems_ez::create_with_code_page;
 
 fn line(s: &str) -> String {
@@ -29,6 +29,8 @@ fn base64(text: &str) -> Vec<u8> {
 
 fn main() {
     let path = std::env::args().nth(1).expect("samples file");
+    // `dump_items <file> nulls`: which items leave Value null
+    let nulls = std::env::args().nth(2).is_some();
     let mut number = 0;
     for l in std::fs::read_to_string(path).unwrap().lines() {
         number += 1;
@@ -37,6 +39,8 @@ fn main() {
         }
         let raw = base64(l.split('\t').nth(1).unwrap());
         match create_with_code_page(&raw, 1252) {
+            Ok(b) if nulls => println!("{number}\t{}\t{}", b.class, if b.value_is_null { "null" } else if b.value.is_empty() { "empty" } else { "text" }),
+            Err(_) if nulls => println!("{number}\tERROR"),
             Ok(b) => {
                 println!("{number}\t{}\t{}\t{}", b.class, line(&b.friendly_name), line(&b.value));
                 println!("  text\t{}", line(&b.to_text()));

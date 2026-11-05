@@ -13,3 +13,4 @@ ez-common = { version = "0.1.0", path = "../ez-common" }
 fancy-regex = "0.20.0"
 guidmapping-ez = { version = "0.1.0", path = "../guidmapping-ez" }
 registry-ez = { version = "0.1.0", path = "../registry-ez" }
+shellitems-ez = { version = "0.1.0", path = "../shellitems-ez" }

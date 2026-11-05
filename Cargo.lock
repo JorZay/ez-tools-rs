@@ -893,6 +893,7 @@ dependencies = [
  "fancy-regex",
  "guidmapping-ez",
  "registry-ez",
+ "shellitems-ez",
 ]
 
 [[package]]

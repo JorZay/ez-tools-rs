@@ -48,7 +48,7 @@ pub struct ShellItem {
     /// ShellBagDamaged's message
     pub error_message: Option<String>,
     /// Value was left null, which tells some readers it wasn't this class after all
-    pub(crate) value_is_null: bool,
+    pub value_is_null: bool,
     pub(crate) parts: Vec<Part>,
     pub(crate) after: String,
     /// ToString() with no shared text (ShellBagUnknown and ShellBagParseError)
