@@ -15,6 +15,7 @@ port is brought up to date.
 | `lnk-ez` | EricZimmerman/Lnk | `dab1c8ab9c1c18d2cf89a4938ab95794d17d3a44` | | 2026.10.11 | Exact |
 | `shellitems-ez` | EricZimmerman/ExtensionBlocks | `897bbe3` (not HEAD) | | 2026.10.9 | Exact |
 | `recmd` | EricZimmerman/RECmd | `8d1955910964209500b6f74f169e3e52554838d7` | | 2026.10.3 | Exact |
+| `rla` | EricZimmerman/RECmd | `8d1955910964209500b6f74f169e3e52554838d7` | 2026-10-29 | 2026.10.1 | Exact |
 | `registry-plugins` | EricZimmerman/RegistryPlugins | `bf564d6c4fcabf67b5ce4428ddf5e4a769b1e9ba` | 2026-10-29 | RegistryPluginBase 2026.10.7 | Exact (all 69 ported) |
 | `guidmapping-ez` | EricZimmerman/GuidMapping | `e2c93615a491ca43197b36960a436b559062cb52` | | 2026.10.2 | Exact |
 | `registry-ez` | EricZimmerman/Registry | not recorded (NuGet package 2026.10.1) | | 2026.10.1 | Package version only |

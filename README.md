@@ -7,7 +7,8 @@ Each tool is a library (which never prints or exits, so other programs can use i
 |---|---|
 | [EvtxECmd](https://github.com/EricZimmerman/evtx) → `evtxecmd` | Done |
 | [MFTECmd](https://github.com/EricZimmerman/MFTECmd) → `mftecmd` | Done |
-| [RECmd](https://github.com/EricZimmerman/RECmd) → `recmd` | Core and all 69 plugins done; rla next (`docs/plans/recmd.md`) |
+| [RECmd](https://github.com/EricZimmerman/RECmd) → `recmd` | Core and all 69 plugins done (`docs/plans/recmd.md`) |
+| [rla](https://github.com/EricZimmerman/RECmd) → `rla` | Done (`docs/plans/recmd.md`) |
 | [PECmd](https://github.com/EricZimmerman/PECmd) → `pecmd` | Done (`docs/plans/pecmd.md`) |
 | [AmcacheParser](https://github.com/EricZimmerman/AmcacheParser) → `amcacheparser` | Done (`docs/plans/amcache.md`) |
 | [AppCompatCacheParser](https://github.com/EricZimmerman/AppCompatCacheParser) → `appcompatcacheparser` | Done (`docs/plans/appcompatcache.md`) |
@@ -41,6 +42,19 @@ recmd -f /cases/host1/SYSTEM --kn 'ControlSet001\Services\bam' --details
 
 Differences: dates and numbers inside values are en-US as .NET writes them, where the original follows the machine's
 language; SID conversions give the SID as on Windows; `--vss` is ignored. `tools/parity-recmd.sh` compares with the original.
+
+## rla
+
+A port of rla: replays the transaction logs of dirty hives (`.LOG`, `.LOG1`, `.LOG2` next to them) and saves the hives, under
+their original path in `--out` or, with `--nop`, directly in it.
+
+```sh
+rla -f /cases/host1/SYSTEM --out out
+rla -d /cases/host1 --out out --nop
+```
+
+Differences: as the original's Windows build, `-d` takes any file whose name holds a hive's name and that has a hive's
+signature, and doesn't follow links to folders. `tools/parity-rla.sh` compares with the original.
 
 ## amcacheparser
 
@@ -137,9 +151,10 @@ time, and `--merge`, which collapses copies of the same log (an old and a new `S
 | `crates/prefetch-ez`, `crates/pecmd` | The Prefetch library and PECmd's command line tool. |
 | `crates/amcache-ez`, `crates/amcacheparser` | The Amcache library and AmcacheParser's command line tool. |
 | `crates/appcompatcache-ez`, `crates/appcompatcacheparser` | The ShimCache library and AppCompatCacheParser's command line tool. |
+| `crates/rla` | rla's command line tool, on `registry-ez`. |
 | `maps/` | EvtxECmd's maps (from its repository, MIT), built into the binary. |
 | `tests/fixtures/rust-evtx` | Sample logs from [omerbenamram/evtx](https://github.com/omerbenamram/evtx) (MIT/Apache-2.0). |
-| `tools/parity.sh`, `tools/parity-mftecmd.sh`, `tools/parity-recmd.sh`, `tools/parity-pecmd.sh`, `tools/parity-amcache.sh`, `tools/parity-appcompatcache.sh` | Compare the tools' output with the originals'. |
+| `tools/parity.sh`, `tools/parity-mftecmd.sh`, `tools/parity-recmd.sh`, `tools/parity-pecmd.sh`, `tools/parity-amcache.sh`, `tools/parity-appcompatcache.sh`, `tools/parity-rla.sh` | Compare the tools' output with the originals'. |
 
 ## Use
 

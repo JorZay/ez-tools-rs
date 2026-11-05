@@ -1,6 +1,6 @@
 # Plan: porting RECmd to Rust
 
-Status: core done (2026-11-02): `registry-ez` and `recmd`. All 69 plugins done (2026-11-05, see "Plugins"). rla is not started.
+Status: core done (2026-11-02): `registry-ez` and `recmd`. All 69 plugins done (2026-11-05, see "Plugins"). rla done (2026-11-05, see "rla").
 
 ## Done: the core
 
@@ -63,7 +63,7 @@ errors), and the CLIs are thin clients.
    `BinaryConvert`, value formatting, CSV/JSON as RECmd writes them, multiple hives, console log file. Keys that a
    plugin handles show raw values until phase 5. Test: RECmd's batch CSV byte for byte with plugins disabled.
 4. **Searches and key dumps** (if wanted): `--sa/--sk/--sv/--sd/--ss`, `--regex`, `--literal`, `--base64`,
-   `--minSize`, `--nd`, `--details`; `--kn/--vn/--saveTo`. And `rla` (if wanted).
+   `--minSize`, `--nd`, `--details`; `--kn/--vn/--saveTo`. And `rla` (done).
 5. **Plugins, in waves**, each wave compared with the original plugin's output (values as multisets, errors as sets,
    as the RegistryPlugins repo validates them):
    1. Simple decoders (most plugins): Bam, TypedURLs, RunMRU, WordWheelQuery, TimeZoneInformation, ProfileList,
@@ -74,6 +74,22 @@ errors), and the CLIs are thin clients.
    4. Shell items: `shellitems-ez` (ExtensionBlocks), then LastVisitedPidlMRU, OpenSavePidlMRU, Taskband.
 6. **Parity and performance**: a `tools/parity-recmd.sh` like EvtxECmd's (the original needs its Plugins folder,
    built from RegistryPlugins with `CopyPlugins.ps1`), runs on real hives, timings.
+
+## rla
+
+`crates/rla`, from the same RECmd commit (rla 2026.10.1, Registry 2026.10.1): `-f`, `-d`, `--out`, `--ca`, `--cn`, `--nop`, `--debug`, `--trace`, `--co`. The replay is `registry-ez`'s; this crate finds hives and logs, decides where each hive is saved (`names.rs`, with upstream's `OutputNamesTests`) and writes it.
+
+Parity: `tools/gen-rla-cases.py` makes the corpus and `tools/parity-rla.sh` compares saved files (names and bytes) and exit codes against the .NET 10 reference. 482 runs, 0 differences (2026-11-05), and the original replayed logs in 223 of them: the 28 Registry.Test files; the museum's dirty SYSTEM with 14 arrangements of its logs; files too short to be hives; bad arguments and outputs; a KAPE-like tree under `-d`; 40 logs built with valid checksums and hashes, reaching each check of the replay in both formats; and 300 of those with random values and bytes. Console output is the same in all but 6: the help (this port's), and the 5 `-d` runs below. Console lines of `--debug` runs aren't compared, as they start with a time. No real extraction has been run yet.
+
+Differences from the Linux reference, on purpose, following the original's Windows build:
+
+- `-d` takes any file whose name holds a hive's name (`NTUSER1.DAT`, `SYSTEM.old`) and that has the `regf` signature, where the Linux build takes exact names only. So it can save more hives, and a file with a hive's name that isn't a hive is never opened. `crates/rla/tests/cli.rs` checks this, as the reference can't.
+- `-d` doesn't follow links to folders, where the Linux build does and saves those hives twice. Links to files are followed, as the Linux build does (the Windows build skips them).
+- `-d` creates `--out` before searching, even when nothing is found, and says so; it warns if `--out` already has files (with `--co` on that is always, as its log is there).
+
+Other differences: a folder that can't be read is named in the error, where the Linux build names the folder searched. `--help` is this port's. Live systems aren't read: a hive that can't be read is reported, with exit code 1.
+
+Kept from the original, though odd: a hive with matching sequence numbers, a wrong checksum and logs is reported as "Sequence numbers match! Hive is not dirty" and not saved, though the comment there says the logs should fix it.
 
 ## Plugins
 
