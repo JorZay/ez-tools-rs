@@ -456,6 +456,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "guidmapping-ez"
+version = "0.1.0"
+
+[[package]]
 name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -731,6 +735,7 @@ dependencies = [
  "ez-common",
  "fancy-regex",
  "registry-ez",
+ "registry-plugins",
  "sha1",
  "ureq",
  "yaml-rust2",
@@ -761,6 +766,17 @@ dependencies = [
  "ez-common",
  "fancy-regex",
  "indexmap",
+]
+
+[[package]]
+name = "registry-plugins"
+version = "0.1.0"
+dependencies = [
+ "appcompatcache-ez",
+ "ez-common",
+ "fancy-regex",
+ "guidmapping-ez",
+ "registry-ez",
 ]
 
 [[package]]

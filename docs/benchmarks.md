@@ -26,5 +26,5 @@ Reading these:
 - The small-input rows mostly measure .NET's startup (about 0.15 s).
 - PECmd's sample corpus is 54 small files copied 200 times; its memory is mostly the parsed files, kept until the export,
   as the original does.
-- RECmd runs without plugins on both sides, so a real run with plugins will differ.
+- RECmd ran without plugins on both sides (measured before any were ported), so a real run with plugins will differ.
 - One sample set per tool and one machine: these show the size of the differences, not exact figures for other data.

@@ -1,0 +1,15 @@
+[package]
+name = "registry-plugins"
+description = "Decoders for specific registry keys, as Eric Zimmerman's RegistryPlugins read them"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+appcompatcache-ez = { version = "0.1.0", path = "../appcompatcache-ez" }
+ez-common = { version = "0.1.0", path = "../ez-common" }
+fancy-regex = "0.20.0"
+guidmapping-ez = { version = "0.1.0", path = "../guidmapping-ez" }
+registry-ez = { version = "0.1.0", path = "../registry-ez" }

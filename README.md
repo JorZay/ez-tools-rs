@@ -7,7 +7,7 @@ Each tool is a library (which never prints or exits, so other programs can use i
 |---|---|
 | [EvtxECmd](https://github.com/EricZimmerman/evtx) → `evtxecmd` | Done |
 | [MFTECmd](https://github.com/EricZimmerman/MFTECmd) → `mftecmd` | Done |
-| [RECmd](https://github.com/EricZimmerman/RECmd) → `recmd` | Core done; plugins and rla next (`docs/plans/recmd.md`) |
+| [RECmd](https://github.com/EricZimmerman/RECmd) → `recmd` | Core and 36 of 69 plugins done; the other plugins and rla next (`docs/plans/recmd.md`) |
 | [PECmd](https://github.com/EricZimmerman/PECmd) → `pecmd` | Done (`docs/plans/pecmd.md`) |
 | [AmcacheParser](https://github.com/EricZimmerman/AmcacheParser) → `amcacheparser` | Done (`docs/plans/amcache.md`) |
 | [AppCompatCacheParser](https://github.com/EricZimmerman/AppCompatCacheParser) → `appcompatcacheparser` | Done (`docs/plans/appcompatcache.md`) |
@@ -29,7 +29,7 @@ pecmd -f /cases/host1/Prefetch/CMD.EXE-D269B812.pf
 A port of RECmd: registry hives searched (`--sa/--sk/--sv/--sd/--ss`), keys dumped (`--kn`, `--vn`, `--details`), and
 batch files (`--bn`, RECmd's `.reb` files) to CSV or JSON, with RECmd's columns. Dirty hives get their transaction
 logs (`.LOG1/.LOG2`, or the old `.LOG`) applied; deleted keys and values are recovered (`--recover`, on by default).
-Plugins are not ported yet: the keys they decode show their raw values.
+36 of the 69 plugins are ported (list in `docs/plans/recmd.md`): each writes its own CSV or JSON next to the batch output. The keys of the others show their raw values.
 
 ```sh
 recmd -d /cases/host1 --bn BatchExamples/DFIRBatch.reb --csv out

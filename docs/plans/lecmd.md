@@ -6,7 +6,7 @@ Status: planned, not started. Line counts and samples are from the upstream clon
 
 | Original (C#, EricZimmerman) | Lines | Rust |
 |---|---|---|
-| GuidMapping (14,469 GUID names, 2 prefixes) | 175 + data | `shellitems-ez::guids` |
+| GuidMapping (14,469 GUID names, 2 prefixes) | Done | `guidmapping-ez` |
 | ExtensionBlocks: 32 `0xbeef` blocks, property sheets and stores | ~8,100 | `shellitems-ez::blocks` |
 | ExtensionBlocks: shell items (`ShellItems/`, 88 files) | ~11,100 | `shellitems-ez::items` |
 | Lnk (MS-SHLLINK: header, ID lists, LinkInfo, strings, extra data) | ~2,300 | `lnk-ez` |

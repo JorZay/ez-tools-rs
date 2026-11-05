@@ -1,6 +1,6 @@
 # Plan: porting RECmd to Rust
 
-Status: core done (2026-11-02): `registry-ez` and `recmd` without plugins. Next: rla, then the plugins.
+Status: core done (2026-11-02): `registry-ez` and `recmd`. Plugins in progress (2026-11-04): the 36 small ones are done, 33 are left (see "Plugins"). rla is not started.
 
 ## Done: the core
 
@@ -8,7 +8,7 @@ Status: core done (2026-11-02): `registry-ez` and `recmd` without plugins. Next:
   data, UWP types), transaction log replay (HvLE with Marvin32, and DIRT), the searches.
 - `recmd`: `-f/-d`, `--bn` (CSV and JSON), `--sa/--sk/--sv/--sd/--ss` with `--regex/--literal/--nd`, `--kn/--vn/--saveTo`,
   `--json` for keys, `--details`, `--minSize`, `--base64`, `--nl`, `--recover`, `--dedupe`, `--dt`, `--co`, and `--sync`
-  (feature `sync`). Keys that plugins handle show their values (no plugins yet).
+  (feature `sync`). Keys handled by a plugin that isn't ported yet show their values.
 - Parity (`tools/parity-recmd.sh`): 83 runs on the 28 Registry.Test hives and the DFIR Artifact Museum's dirty SYSTEM
   (with its logs) identical to RECmd 2026.10.3, output files and console: batch files (DFIRBatch, and every key of
   every hive, ~2 million rows), searches, key dumps, `--details` (14 million lines for SOFTWARE). 2.7x faster.
@@ -24,9 +24,10 @@ Status: core done (2026-11-02): `registry-ez` and `recmd` without plugins. Next:
 | Registry | ~9,200 | `registry-ez` (library) | Hive parsing (base block, hbins, nk/vk/sk/lk cells, lists), value data, value slack, transaction log replay (new `HvLE` and old `DIRT` formats), deleted key/value recovery |
 | RECmd | ~3,500 | `recmd` (CLI) + timeline code in `registry-ez` | Batch mode (`.reb` YAML), searches, key dumps, CSV/JSON output |
 | rla | ~900 | `rla` (CLI) | Replays transaction logs and saves clean hives |
-| RegistryPluginBase + 75 RegistryPlugin.* | ~14,300 | `registry-ez::plugins` | Decoders for specific keys (UserAssist, Bam, MRUs, SAM, USB, Amcache...) |
+| RegistryPluginBase + 69 RegistryPlugin.* | ~12,100 | `registry-plugins` | Decoders for specific keys (UserAssist, Bam, MRUs, SAM, USB, Amcache...). Its own crate, as it needs `appcompatcache-ez`, which needs `registry-ez` |
 | AppCompatCache | ~1,200 | `appcompatcache-ez` (library) | ShimCache parsing, for the AppCompatCache plugin (and a later AppCompatCacheParser port) |
-| ExtensionBlocks + GuidMapping | ~19,300 | `shellitems-ez` (library) | Shell items and extension blocks, for the shell-item plugins (and later SBECmd, LECmd, JLECmd) |
+| GuidMapping | 175 + data | `guidmapping-ez` | GUID names (ETW, later UserAssist and the shell items) |
+| ExtensionBlocks | ~19,100 | `shellitems-ez` (library) | Shell items and extension blocks, for the shell-item plugins (and later SBECmd, LECmd, JLECmd) |
 | BatchExamples | 22 `.reb` files | `batch/` folder, built in | The community batch files (MIT), like EvtxECmd's maps |
 
 Same organization as EvtxECmd: the libraries never print or exit (they report through an observer and return
@@ -73,6 +74,31 @@ errors), and the CLIs are thin clients.
    4. Shell items: `shellitems-ez` (ExtensionBlocks), then LastVisitedPidlMRU, OpenSavePidlMRU, Taskband.
 6. **Parity and performance**: a `tools/parity-recmd.sh` like EvtxECmd's (the original needs its Plugins folder,
    built from RegistryPlugins with `CopyPlugins.ps1`), runs on real hives, timings.
+
+## Plugins
+
+Upstream has 69, about 12,100 lines. Rated from their size and how much they parse:
+
+| Group | Count | Plugins | Status |
+|---|---|---|---|
+| Small | 36 | 7-Zip (4), Adobe.TrustManager-Websites, Amcache (7), AppCompatCache, AppCompatFlags2, AppPaths, Bam, BluetoothServicesBthPort, DeviceClasses, DsrmAdminLogonBehaviour, ETW, FeatureUsage, JumplistData, NetworkAdapters, NetworkSettings, NetworkSetup2, Products, ProfileList, RADAR, RunMRU, TerminalServerClient, TypedURLs, Uninstall, VolumeInfoCache, WindowsApp, WindowsPortableDevices, WinRAR | Done |
+| Medium | 25 | Adobe, Ares, CIDSizeMRU, DHCPNetworkHint, FileExts, FirewallRules, FirstFolder, IconLayouts, KnownNetworks, LastVisitedMRU, OfficeMRU, OpenSaveMRU, RecentApps, SAMBuiltin, SCSI, Services, SWD, SyscacheObjectTable, TaskFlowShellActivities, TimeZoneInformation, TrustedDocuments, USB, USBSTOR, UserAssist, WordWheelQuery | To do |
+| Large | 4 | ApplicationSettingsContainer, SAM, TaskCache, AppCompatFlags (LZNT1) | To do |
+| Need `shellitems-ez` | 4 | LastVisitedPidlMRU, OpenSavePidlMRU, Taskband, RecentDocs (`Beef0004` only) | Waits for LECmd's library |
+
+How the framework behaves, each seen in the original's output:
+
+- A plugin that handles a key replaces its raw values with `(plugin)` rows, even when it gives no rows at all. `DisablePlugin: true` turns that off for one batch key.
+- Which plugins run is GetPluginsToActivate as written, including its odd cases: a plugin for one value runs on a parent key of its path, when the batch key names that value.
+- A plugin's file is `<out>/<time>/<time>_<class>_<hive>.csv`, or `<csvf stem>_<class>.<ext>` with `--csvf`. Calls append, the header only once.
+- The plugin's CSV has the first column, BatchKeyPath, the second column, BatchValueName, then the rest: RECmd gives the two batch columns indexes 0 and 1, and the others keep theirs.
+- Its time stamps ignore `--dt`, since RECmd's converter never receives it. The batch CSV follows `--dt`.
+- What a plugin doesn't catch (RADAR without its subkeys, for one) fails the hive and makes the exit code 1. Earlier rows of that hive stay.
+- Differences: on Linux the original makes a folder of the `/` in the file's name; this port writes an underscore there, as Windows does. Plugins run in the order Windows lists their dlls, by name, where Linux's order depends on the file system. The X format of a GUID (`{0x...}`) isn't read by `guidmapping-ez`.
+
+Parity: `tools/parity-recmd.sh` against RECmd with only the ported plugins in its `Plugins` folder, so the keys of the others are compared as raw values on both sides. Build them with `dotnet build RegistryPlugins.slnx -c Release` and copy each plugin's own dll from `bin/Release/netstandard2.0`. Upstream's test corpus is private and its repository only has three hives, so a generated hive with every plugin's keys, including odd and damaged values, is what reaches them all (`tools/gen-recmd-plugin-hives.py` writes the hives, a batch file and the cases).
+
+Results for the 36 (2026-11-04), against RECmd 2026.10.3 with `RegistryPlugins` `bf564d6`: 34 runs on the generated hives and 117 on real ones (the Registry.Test hives with DFIRBatch, Kroll_Batch, InstalledSoftware and a batch file of all the plugins' keys; upstream's 3 plugin hives; the museum's dirty SYSTEM; the 8 AppCompatCache samples) are identical: files, console and exit codes. Of 200 generated hives with random bytes damaged, all files and exit codes are identical; 7 differ on the console, because the original logs `Error getting ValueData` twice per read (KeyValue.ValueData reads the record twice) where this port logs it once. The same difference is noted for AmcacheParser, and it is left as it is.
 
 ## Reference build
 

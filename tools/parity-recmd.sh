@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Compares this port's output with the original RECmd's: every file each one writes must be identical, and so must
-# the console output after the banner (minus timings, exception stack traces and the output folder's name).
+# the console output after the banner (minus timings, exception stack traces, the output folder's name and the run's time stamp).
 #
 #   tools/parity-recmd.sh <RECmd.dll> [work folder] < cases
 #
@@ -17,9 +17,15 @@ ours="$here/target/release/recmd"
 same=0 diff=0 n=0
 
 console() {
-    # after the banner and the command line; without timings, stack traces and the folder name
+    # after the banner and the command line; without timings, stack traces, the folder name and the run's time stamp
     sed -n '/^Command line:/,$p' "$1" | tail -n +2 | grep -a -v -e '^Total search time' -e '^   at ' -e '^System\.' -e '^--- End of' |
-        sed "s#$2#{out}#g"
+        sed -E "s#$2#{out}#g; s/[0-9]{14}/{time}/g"
+}
+
+# An output file without the folder's name and the run's time stamp (plugin rows name their detail file). Plugin files
+# on Linux: the original makes a folder of the hive's path separator, this port an underscore as on Windows
+masked() {
+    sed -E "s#$2#{out}#g; s/[0-9]{14}/{time}/g; s#(\{time\}_[A-Za-z0-9]+_)/#\1_#g" "$1"
 }
 
 while IFS= read -r line; do
@@ -44,15 +50,23 @@ while IFS= read -r line; do
         diff=$((diff + 1))
         echo "DIFF console: $line"
     fi
-    for f in $(cd "$work/$n-ref" && find . -type f | sort); do
-        if cmp -s "$work/$n-ref/$f" "$work/$n-ours/$f"; then
+    # files by their names without the time stamp, as the two runs start at different times
+    names() { (cd "$1" && find . -type f | while IFS= read -r f; do printf '%s\t%s\n' "$(printf '%s' "$f" | sed -E 's/[0-9]{14}/{time}/g; s#_/#__#')" "$f"; done | sort); }
+    names "$work/$n-ref" > "$work/$n-ref.names"
+    names "$work/$n-ours" > "$work/$n-ours.names"
+    while IFS=$'\t' read -r name f; do
+        o=$(awk -F'\t' -v n="$name" '$1 == n { print $2 }' "$work/$n-ours.names")
+        if [ -z "$o" ]; then
+            diff=$((diff + 1))
+            echo "MISSING from this port for $line: $name"
+        elif cmp -s <(masked "$work/$n-ref/$f" "$work/$n-ref") <(masked "$work/$n-ours/$o" "$work/$n-ours"); then
             same=$((same + 1))
         else
             diff=$((diff + 1))
-            echo "DIFF $line: $f"
+            echo "DIFF $line: $name"
         fi
-    done
-    extra=$(cd "$work/$n-ours" && find . -type f | sort | while read -r f; do [ -e "$work/$n-ref/$f" ] || echo "$f"; done)
+    done < "$work/$n-ref.names"
+    extra=$(cut -f1 "$work/$n-ours.names" | while IFS= read -r name; do grep -qF -- "$name	" "$work/$n-ref.names" || echo "$name"; done)
     [ -n "$extra" ] && { diff=$((diff + 1)); echo "EXTRA files from this port for $line: $extra"; }
 done
 

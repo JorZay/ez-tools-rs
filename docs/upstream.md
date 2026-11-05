@@ -11,6 +11,8 @@ port is brought up to date.
 | `amcacheparser`, `amcache-ez` | EricZimmerman/AmcacheParser | `4706a080461d9506edbd6327bc58fc558978606d` | 2026-10-25 | 2026.10.1 | Exact |
 | `appcompatcacheparser`, `appcompatcache-ez` | EricZimmerman/AppCompatCacheParser | `694c0bba98b7a2edc78f8a8fd6975bf94d37cf8c` | 2026-10-25 | 2026.10.1 | Exact |
 | `recmd` | EricZimmerman/RECmd | `8d1955910964209500b6f74f169e3e52554838d7` | | 2026.10.3 | Exact |
+| `registry-plugins` | EricZimmerman/RegistryPlugins | `bf564d6c4fcabf67b5ce4428ddf5e4a769b1e9ba` | 2026-10-29 | RegistryPluginBase 2026.10.7 | Exact (36 of 69 ported) |
+| `guidmapping-ez` | EricZimmerman/GuidMapping | `e2c93615a491ca43197b36960a436b559062cb52` | | 2026.10.2 | Exact |
 | `registry-ez` | EricZimmerman/Registry | not recorded (NuGet package 2026.10.1) | | 2026.10.1 | Package version only |
 | `evtxecmd`, `evtx-ez` | EricZimmerman/evtx | `fbf2f66736669689bfb95f735f7eca86d29d9800` | 2026-10-25 | | Estimate |
 | `mftecmd` | EricZimmerman/MFTECmd | `b1f668d870153f9a4c4073845265c0e6071ed09f` | 2026-10-25 | 2026.10.6 | Estimate |

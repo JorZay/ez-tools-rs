@@ -399,13 +399,17 @@ pub struct Row {
     pub description: Option<String>,
     pub category: Option<String>,
     pub key_path: String,
-    pub value_name: String,
+    /// BatchValueName of a plugin's row can be null
+    pub value_name: Option<String>,
     pub value_type: String,
     pub value_data: String,
+    pub value_data2: Option<String>,
+    pub value_data3: Option<String>,
     pub comment: Option<String>,
     pub recursive: bool,
     pub deleted: bool,
     pub last_write: Timestamp,
+    pub plugin_detail_file: Option<String>,
 }
 
 pub const CSV_HEADER: &str = "HivePath,HiveType,Description,Category,KeyPath,ValueName,ValueType,ValueData,ValueData2,ValueData3,Comment,Recursive,Deleted,LastWriteTimestamp,PluginDetailFile";
@@ -422,11 +426,11 @@ impl Row {
             self.description.as_deref().unwrap_or(""),
             self.category.as_deref().unwrap_or(""),
             &self.key_path,
-            &self.value_name,
+            self.value_name.as_deref().unwrap_or(""),
             &self.value_type,
             &self.value_data,
-            "",
-            "",
+            self.value_data2.as_deref().unwrap_or(""),
+            self.value_data3.as_deref().unwrap_or(""),
             self.comment.as_deref().unwrap_or(""),
         ];
         for f in fields {
@@ -439,6 +443,7 @@ impl Row {
         out.push(',');
         csv::field(out, &self.last_write.format(dt));
         out.push(',');
+        csv::field(out, self.plugin_detail_file.as_deref().unwrap_or(""));
         out.push_str(csv::NEW_LINE);
     }
 
@@ -453,15 +458,15 @@ impl Row {
         o.string("HivePath", Some(&self.hive_path)).string("HiveType", Some(&self.hive_type));
         null(&mut o, "Description", self.description.as_deref());
         null(&mut o, "Category", self.category.as_deref());
-        o.string("KeyPath", Some(&self.key_path))
-            .string("ValueName", Some(&self.value_name))
-            .string("ValueType", Some(&self.value_type))
-            .string("ValueData", Some(&self.value_data))
-            .raw("ValueData2", "null")
-            .raw("ValueData3", "null");
+        o.string("KeyPath", Some(&self.key_path));
+        null(&mut o, "ValueName", self.value_name.as_deref());
+        o.string("ValueType", Some(&self.value_type)).string("ValueData", Some(&self.value_data));
+        null(&mut o, "ValueData2", self.value_data2.as_deref());
+        null(&mut o, "ValueData3", self.value_data3.as_deref());
         null(&mut o, "Comment", self.comment.as_deref());
         o.bool("Recursive", self.recursive).bool("Deleted", self.deleted);
-        o.raw("LastWriteTimestamp", &format!("\"{}\"", self.last_write.to_json_string())).raw("PluginDetailFile", "null");
+        o.raw("LastWriteTimestamp", &format!("\"{}\"", self.last_write.to_json_string()));
+        null(&mut o, "PluginDetailFile", self.plugin_detail_file.as_deref());
         o.finish()
     }
 }
@@ -477,16 +482,19 @@ pub fn build_row(hive: &Hive, k: KeyId, key: &BatchKey, value: Option<VkId>, dt:
         description: key.description.clone(),
         category: key.category.clone(),
         key_path: hive.keys[k].path.clone(),
-        value_name: match value {
+        value_name: Some(match value {
             Some(v) => hive.vks[v].name()?.to_string(),
             None => String::new(),
-        },
+        }),
         value_type: value.map(|v| hive.vks[v].type_name()).unwrap_or_default(),
         value_data: String::new(),
+        value_data2: None,
+        value_data3: None,
         comment: key.comment.clone(),
         recursive: key.recursive,
         deleted: nk.deleted.get(),
         last_write: nk.last_write()?,
+        plugin_detail_file: None,
     };
     let data = |v: VkId| -> NetResult<String> { Ok(hive.value_data(v)?.text()) };
     if row.value_type == "RegBinary" {
@@ -621,6 +629,28 @@ fn sid(raw: &[u8]) -> Result<String, String> {
         s.push_str(&format!("-{}", u32::from_le_bytes(raw[o..o + 4].try_into().unwrap())));
     }
     Ok(s)
+}
+
+/// The row of a plugin's output: BatchDumpKey's BatchCsvOut. The key path is the key the batch file reached, not the row's
+pub fn plugin_row(hive: &Hive, k: KeyId, key: &BatchKey, row: registry_plugins::ValuesOut, detail: Option<String>) -> NetResult<Row> {
+    let nk = hive.nk(k);
+    Ok(Row {
+        hive_path: hive.path.clone(),
+        hive_type: key.hive_type_name(),
+        description: key.description.clone(),
+        category: key.category.clone(),
+        key_path: hive.keys[k].path.clone(),
+        value_name: row.batch_value_name,
+        value_type: "(plugin)".into(),
+        value_data: row.batch_value_data1,
+        value_data2: row.batch_value_data2,
+        value_data3: row.batch_value_data3,
+        comment: key.comment.clone(),
+        recursive: key.recursive,
+        deleted: nk.deleted.get(),
+        last_write: nk.last_write()?,
+        plugin_detail_file: detail,
+    })
 }
 
 /// The value with this name (FirstOrDefault, case-insensitively)

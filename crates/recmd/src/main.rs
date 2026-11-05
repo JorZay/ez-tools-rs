@@ -21,6 +21,7 @@ use ez_common::net::NetResult;
 use ez_common::time::Timestamp;
 use registry_ez::hive::{HitType, Hive, KeyId, SearchHit, lower, strip_root, upper};
 use registry_ez::replay::LogFile;
+use registry_plugins::{Activation, Output, Plugin, ValuesOut};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -197,6 +198,8 @@ struct Run {
     hive_info_with_hits: Vec<String>,
     search_used: bool,
     errors: u32,
+    plugins: Activation,
+    run_time: Timestamp,
 }
 
 fn run(mut args: Args) -> Result<ExitCode, String> {
@@ -327,6 +330,8 @@ fn run(mut args: Args) -> Result<ExitCode, String> {
         hive_info_with_hits: Vec::new(),
         search_used: false,
         errors,
+        plugins: Activation::new(),
+        run_time,
     };
     let mut failed = 0u32;
     let mut access_failed = 0u32;
@@ -996,8 +1001,113 @@ impl Run {
         Ok(())
     }
 
-    /// BatchDumpKey (no plugins are loaded: the values themselves)
+    /// One plugin for a key: ProcessValues, its output file, and its rows. What it doesn't catch, and an output file that
+    /// can't be written, fail the hive and the run's exit code.
+    fn run_plugin(&mut self, hive: &Hive, k: KeyId, key: &BatchKey, plugin: &Plugin) -> Result<(), Failure> {
+        let mut output = Output::default();
+        let processed = (plugin.process)(hive, k, &mut output);
+        self.drain(hive);
+        for (level, message) in &output.messages {
+            self.log.log(*level, message);
+        }
+        let detail = processed.and_then(|()| self.write_plugin_output(hive, plugin, &output.rows));
+        let detail = match detail {
+            Ok(d) => d,
+            Err(e) => {
+                self.errors += 1;
+                return Err(e.into());
+            }
+        };
+        for row in output.rows {
+            self.rows.push(batch::plugin_row(hive, k, key, row, detail.clone())?);
+        }
+        if !output.errors.is_empty() {
+            self.log.warning(&format!("Plugin {} error. Errors: {}", plugin.plugin_name, output.errors.join(", ")));
+        }
+        Ok(())
+    }
+
+    /// DumpPluginValues: appends the rows to the plugin's own file and gives its path. Nothing when there are no rows, or
+    /// no folder to write to. Like the batch file, it goes to --json when that's given, else --csv.
+    fn write_plugin_output(&mut self, hive: &Hive, plugin: &Plugin, rows: &[ValuesOut]) -> NetResult<Option<String>> {
+        if rows.is_empty() {
+            return Ok(None);
+        }
+        let e = |e: std::io::Error| e.to_string();
+        let a = &self.args;
+        let (csv, csvf, json, jsonf) = (a.csv.clone(), a.csvf.clone(), a.json.clone(), a.jsonf.clone());
+        let given = |s: &Option<String>| s.clone().filter(|s| !s.is_empty());
+        let dir_name = match given(&a.file) {
+            // Path.GetDirectoryName
+            Some(f) => Path::new(&f).parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
+            None => a.dir.clone().unwrap_or_default(),
+        };
+        if dir_name.is_empty() {
+            return Err("The value cannot be an empty string. (Parameter 'oldValue')".to_string());
+        }
+        // On Windows the separators of what's left become underscores; '/' is treated the same here, so that the file stays
+        // in the run's folder
+        let hive_name = hive.path.replace(&dir_name, "").replace(':', "").replace(['\\', '/'], "_");
+        let stamp = self.run_time.format("yyyyMMddHHmmss");
+        for dir in [&csv, &json].into_iter().filter_map(given) {
+            if !Path::new(&dir).is_dir() {
+                self.log.info(&format!("Path to {dir} doesn't exist. Creating..."));
+                std::fs::create_dir_all(&dir).map_err(e)?;
+            }
+        }
+        let named = |custom: &Option<String>, ext: &str| match given(custom) {
+            Some(f) => {
+                let f = Path::new(&f);
+                let stem = f.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                let extension = f.extension().map(|s| format!(".{}", s.to_string_lossy())).unwrap_or_default();
+                format!("{stem}_{}{extension}", plugin.type_name)
+            }
+            None => format!("{stamp}_{}_{hive_name}.{ext}", plugin.type_name),
+        };
+        let (output_dir, name) = match (given(&json), given(&csv)) {
+            (Some(dir), _) => (dir, named(&jsonf, "json")),
+            (None, Some(dir)) => (dir, named(&csvf, "csv")),
+            (None, None) => return Ok(None),
+        };
+        let folder = Path::new(&output_dir).join(&stamp);
+        std::fs::create_dir_all(&folder).map_err(e)?;
+        let out_file = folder.join(name);
+        let exists = out_file.exists();
+        let mut text = String::new();
+        if given(&json).is_some() {
+            for row in rows {
+                text.push_str(&row.json_line());
+                text.push('\n');
+            }
+        } else {
+            if !exists {
+                text.push_str(&rows[0].csv_header());
+                text.push_str(ez_common::csv::NEW_LINE);
+            }
+            for row in rows {
+                row.csv_line(&mut text);
+                text.push_str(ez_common::csv::NEW_LINE);
+            }
+        }
+        let mut f = std::fs::OpenOptions::new().append(true).create(true).open(&out_file).map_err(e)?;
+        if !exists {
+            f.write_all(BOM).map_err(e)?;
+        }
+        f.write_all(text.as_bytes()).map_err(e)?;
+        Ok(Some(out_file.to_string_lossy().into_owned()))
+    }
+
+    /// BatchDumpKey: the plugins that handle the key, or else the values themselves
     fn dump_key(&mut self, hive: &Hive, k: KeyId, key: &BatchKey) -> Result<(), Failure> {
+        if !key.disable_plugin {
+            let active = self.plugins.plugins_for(strip_root(&hive.keys[k].path), key.value_name.as_deref());
+            if !active.is_empty() {
+                for plugin in active {
+                    self.run_plugin(hive, k, key, plugin)?;
+                }
+                return Ok(());
+            }
+        }
         let mut values: Vec<Option<usize>> = Vec::new();
         if let Some(vn) = key.value_name.as_deref().filter(|s| !s.is_empty()) {
             let want = lower(vn);
