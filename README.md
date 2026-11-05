@@ -11,6 +11,7 @@ Each tool is a library (which never prints or exits, so other programs can use i
 | [PECmd](https://github.com/EricZimmerman/PECmd) → `pecmd` | Done (`docs/plans/pecmd.md`) |
 | [AmcacheParser](https://github.com/EricZimmerman/AmcacheParser) → `amcacheparser` | Done (`docs/plans/amcache.md`) |
 | [AppCompatCacheParser](https://github.com/EricZimmerman/AppCompatCacheParser) → `appcompatcacheparser` | Done (`docs/plans/appcompatcache.md`) |
+| [SQLECmd](https://github.com/EricZimmerman/SQLECmd) → `sqlecmd` | Done, uses the original's maps unchanged (`docs/plans/sqlecmd.md`) |
 
 The upstream commits each port was built from are in `docs/upstream.md`.
 
@@ -53,6 +54,21 @@ amcacheparser -f /cases/host1/Amcache.hve -b hashes.txt --csv /tmp/out
 Transaction logs next to a dirty hive are applied, unless `--nl` is given. Databases are read from temporary copies
 (`--temp`), so nothing is written next to the evidence. Differences from the original are in `docs/plans/amcache.md`;
 `tools/parity-amcache.sh` compares with it.
+
+## sqlecmd
+
+A port of SQLECmd: finds SQLite databases (browsers, Windows Activities Cache, Dropbox, Android, iOS and many more) and runs the queries in its maps against them, to CSV,
+JSON and blob files. The maps are the original's `.smap` files, unchanged: `maps-sqlecmd/` has a copy, and your own maps or those from upstream work as they are.
+
+```bash
+cargo build --release -p sqlecmd
+sqlecmd -d /cases/host1 --maps maps-sqlecmd --csv /tmp/out          # every SQLite file, against every map
+sqlecmd -d /cases/host1 --maps maps-sqlecmd --hunt false --csv /tmp/out   # only files with a map's file name
+sqlecmd -f /cases/host1/History --maps maps-sqlecmd --json /tmp/out --blobdir /tmp/blobs
+```
+
+Without `--maps`, the maps are read from a `Maps` folder next to the program. Only copies of the databases are opened, in `--temp` or a `Temp` folder next to the program, so the evidence
+isn't changed, and a `-wal` file is still read. `--sync` needs a build with `--features sync`. Values come out as in the original, which depends on the column's declared type: see `docs/plans/sqlecmd.md`.
 
 ## appcompatcacheparser
 

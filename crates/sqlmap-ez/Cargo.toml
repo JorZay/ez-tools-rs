@@ -1,0 +1,17 @@
+[package]
+name = "sqlmap-ez"
+description = "Reads SQLECmd's .smap maps and runs them on SQLite databases, with the values System.Data.SQLite gives"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+ez-common = { version = "0.1.0", path = "../ez-common" }
+rusqlite = { version = "0.40.2", features = ["bundled", "column_decltype", "functions"] }
+yaml-rust2 = "0.13.0"
+
+[dev-dependencies]
+sha1 = "0.11.0"

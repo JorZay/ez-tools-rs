@@ -37,3 +37,75 @@ pub fn open(p: &Path) -> Result<Box<dyn Write>, String> {
     let f = File::create(p).map_err(|e| format!("Unable to open {}: {e}", p.display()))?;
     Ok(Box::new(BufWriter::with_capacity(1 << 20, f)))
 }
+
+/// Path.GetFullPath: `.` and `..` are resolved, and a separator at the end is kept
+pub fn full_path(p: &str) -> String {
+    use std::path::Component;
+    let abs = std::path::absolute(p).unwrap_or_else(|_| PathBuf::from(p));
+    let mut out = PathBuf::new();
+    for c in abs.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    let mut text = out.to_string_lossy().into_owned();
+    if p.ends_with('/') && !text.ends_with('/') {
+        text.push('/');
+    }
+    text
+}
+
+/// What the exception .NET throws says for a path that can't be created or written
+pub fn io_message(path: &Path, e: &io::Error) -> String {
+    let full = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    match e.kind() {
+        io::ErrorKind::PermissionDenied | io::ErrorKind::IsADirectory => format!("Access to the path '{}' is denied.", full.display()),
+        io::ErrorKind::NotFound | io::ErrorKind::NotADirectory => format!("Could not find a part of the path '{}'.", full.display()),
+        io::ErrorKind::AlreadyExists => format!("The file '{}' already exists.", full.display()),
+        _ => e.to_string(),
+    }
+}
+
+/// The type of that exception
+pub fn io_exception(e: &io::Error) -> &'static str {
+    match e.kind() {
+        io::ErrorKind::PermissionDenied | io::ErrorKind::IsADirectory => "System.UnauthorizedAccessException",
+        io::ErrorKind::NotFound | io::ErrorKind::NotADirectory => "System.IO.DirectoryNotFoundException",
+        _ => "System.IO.IOException",
+    }
+}
+
+/// TempFolder.Prepare: the folder for the copies of the databases (the one given, or Temp next to the program), whether
+/// this run created it, or why it can't be used
+pub fn prepare_temp(given: Option<&str>, tool: &str) -> Result<(String, bool), String> {
+    let folder = match given {
+        Some(f) => full_path(f),
+        None => {
+            let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+            exe.parent().unwrap_or(Path::new(".")).join("Temp").to_string_lossy().into_owned()
+        }
+    };
+    let created = !Path::new(&folder).is_dir();
+    let attempt = || -> io::Result<()> {
+        std::fs::create_dir_all(&folder)?;
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let probe = Path::new(&folder).join(format!("{tool}-write-test-{stamp:032x}{:08x}", std::process::id()));
+        std::fs::write(&probe, [])?;
+        std::fs::remove_file(&probe)
+    };
+    match attempt() {
+        Ok(()) => Ok((folder, created)),
+        Err(e) => Err(format!("{folder}: {}", io_message(Path::new(&folder), &e))),
+    }
+}
+
+/// TempFolder.RemoveIfEmpty: only if this run created it (another run may still be using it)
+pub fn remove_temp_if_empty(folder: &str, created: bool) {
+    if created {
+        let _ = std::fs::remove_dir(folder);
+    }
+}

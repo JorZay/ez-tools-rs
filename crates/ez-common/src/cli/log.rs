@@ -68,6 +68,23 @@ impl Logger {
         }
     }
 
+    /// A message of several lines as Serilog writes it: the time and level only before the first
+    pub fn block(&mut self, level: Level, message: &str) {
+        if level < self.level {
+            return;
+        }
+        let stamp = crate::time::Timestamp::now().format("HH:mm:ss.fff");
+        let console = if self.prefix { format!("[{stamp} {}] {message}", code(level)) } else { message.to_string() };
+        if self.stdout {
+            println!("{console}");
+        } else {
+            eprintln!("{console}");
+        }
+        if let Some((_, f)) = &mut self.file {
+            let _ = writeln!(f, "[{stamp} {}] {message}", code(level));
+        }
+    }
+
     pub fn info(&mut self, message: &str) {
         self.log(Level::Info, message);
     }

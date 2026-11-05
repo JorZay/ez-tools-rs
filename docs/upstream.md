@@ -10,6 +10,7 @@ port is brought up to date.
 | `prefetch-ez` | EricZimmerman/Prefetch | `841212266356a9121a1c34ee538cbce2bb2b9cf3` | 2026-10-16 | PECmd references package 2026.10.1 | Exact |
 | `amcacheparser`, `amcache-ez` | EricZimmerman/AmcacheParser | `4706a080461d9506edbd6327bc58fc558978606d` | 2026-10-25 | 2026.10.1 | Exact |
 | `appcompatcacheparser`, `appcompatcache-ez` | EricZimmerman/AppCompatCacheParser | `694c0bba98b7a2edc78f8a8fd6975bf94d37cf8c` | 2026-10-25 | 2026.10.1 | Exact |
+| `sqlecmd`, `sqlmap-ez`, `maps-sqlecmd/` | EricZimmerman/SQLECmd | `c67634af503bd53777689998f1d9e3c0b4e2fdff` | 2026-10-25 | 2026.10.3 (System.Data.SQLite 1.0.119, SQLite 3.46.1) | Exact |
 | `recmd` | EricZimmerman/RECmd | `8d1955910964209500b6f74f169e3e52554838d7` | | 2026.10.3 | Exact |
 | `registry-plugins` | EricZimmerman/RegistryPlugins | `bf564d6c4fcabf67b5ce4428ddf5e4a769b1e9ba` | 2026-10-29 | RegistryPluginBase 2026.10.7 | Exact (36 of 69 ported) |
 | `guidmapping-ez` | EricZimmerman/GuidMapping | `e2c93615a491ca43197b36960a436b559062cb52` | | 2026.10.2 | Exact |

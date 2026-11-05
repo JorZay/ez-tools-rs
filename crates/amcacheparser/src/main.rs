@@ -13,7 +13,7 @@ use amcache_ez::{
 };
 use clap::{ArgAction, CommandFactory, Parser};
 use ez_common::cli::log::Logger;
-use ez_common::cli::utc_now;
+use ez_common::cli::{full_path, io_message, prepare_temp, remove_temp_if_empty, utc_now};
 use ez_common::dotnet::{lower_invariant, n0, number_n};
 use ez_common::net::path_extension;
 use ez_common::{Level, Timestamp};
@@ -92,40 +92,8 @@ fn given(s: &Option<String>) -> Option<&str> {
     s.as_deref().filter(|s| !s.is_empty())
 }
 
-/// What the exception .NET throws says for a path that can't be created or written
-fn io_message(path: &Path, e: &std::io::Error) -> String {
-    let full = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
-    match e.kind() {
-        std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::IsADirectory => format!("Access to the path '{}' is denied.", full.display()),
-        std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory => format!("Could not find a part of the path '{}'.", full.display()),
-        std::io::ErrorKind::AlreadyExists => format!("The file '{}' already exists.", full.display()),
-        _ => e.to_string(),
-    }
-}
-
 fn io_error(path: &Path, e: &std::io::Error) -> Error {
     Error { message: io_message(path, e), could_not_process: true }
-}
-
-/// Path.GetFullPath: `.` and `..` are resolved, and a separator at the end is kept
-fn full_path(p: &str) -> String {
-    use std::path::Component;
-    let abs = std::path::absolute(p).unwrap_or_else(|_| PathBuf::from(p));
-    let mut out = PathBuf::new();
-    for c in abs.components() {
-        match c {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                out.pop();
-            }
-            other => out.push(other),
-        }
-    }
-    let mut text = out.to_string_lossy().into_owned();
-    if p.ends_with('/') && !text.ends_with('/') {
-        text.push('/');
-    }
-    text
 }
 
 fn base_name(p: &str) -> &str {
@@ -751,36 +719,6 @@ fn table_cell(row: &[Value], n: usize, value: &Value, is_metadata: bool, time_in
     }
 }
 
-/// TempFolder.Prepare: the folder for the copies of the databases, whether this run created it, or why it can't be used
-fn prepare_temp(given_folder: Option<&str>) -> Result<(String, bool), String> {
-    let folder = match given_folder {
-        Some(f) => full_path(f),
-        None => {
-            let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-            exe.parent().unwrap_or(Path::new(".")).join("Temp").to_string_lossy().into_owned()
-        }
-    };
-    let created = !Path::new(&folder).is_dir();
-    let attempt = || -> std::io::Result<()> {
-        std::fs::create_dir_all(&folder)?;
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-        let probe = Path::new(&folder).join(format!("AmcacheParser-write-test-{stamp:032x}{:08x}", std::process::id()));
-        std::fs::write(&probe, [])?;
-        std::fs::remove_file(&probe)
-    };
-    match attempt() {
-        Ok(()) => Ok((folder, created)),
-        Err(e) => Err(format!("{folder}: {}", io_message(Path::new(&folder), &e))),
-    }
-}
-
-/// TempFolder.RemoveIfEmpty: only if this run created it (another run may still be using it)
-fn remove_temp_if_empty(folder: &str, created: bool) {
-    if created {
-        let _ = std::fs::remove_dir(folder);
-    }
-}
-
 /// The -b file, or else the -w file
 fn read_hashes(args: &Args, log: &mut Logger) -> Result<(HashSet<String>, bool), Error> {
     let mut hashes = HashSet::new();
@@ -1008,7 +946,7 @@ fn main() -> ExitCode {
 
     // the databases are read from copies, made in --temp or Temp next to this program
     let temp = if databases {
-        match prepare_temp(given(&args.temp)) {
+        match prepare_temp(given(&args.temp), "AmcacheParser") {
             Ok(t) => Some(t),
             Err(error) => {
                 log.error(&format!("The folder for the temporary copies of the databases can't be written to ({error}). Give one with --temp. Exiting"));

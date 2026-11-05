@@ -63,6 +63,46 @@ fn shortest(sci: &str, precision: i32) -> String {
     out
 }
 
+/// The letter under an accented Latin-1 letter
+fn base_letter(c: char) -> char {
+    match c {
+        '\u{c0}'..='\u{c5}' | '\u{e0}'..='\u{e5}' => 'a',
+        '\u{c7}' | '\u{e7}' => 'c',
+        '\u{c8}'..='\u{cb}' | '\u{e8}'..='\u{eb}' => 'e',
+        '\u{cc}'..='\u{cf}' | '\u{ec}'..='\u{ef}' => 'i',
+        '\u{d1}' | '\u{f1}' => 'n',
+        '\u{d2}'..='\u{d6}' | '\u{f2}'..='\u{f6}' => 'o',
+        '\u{d9}'..='\u{dc}' | '\u{f9}'..='\u{fc}' => 'u',
+        '\u{dd}' | '\u{fd}' | '\u{ff}' => 'y',
+        other => other,
+    }
+}
+
+/// Where a character sorts in ICU's root collation, which .NET's culture comparison uses: spaces, punctuation and symbols,
+/// then digits, then letters
+fn collation_primary(c: char) -> u32 {
+    const ORDER: &str = "\t\n\u{b}\u{c}\r _-,;:!?.'\"()[]{}@*/\\&#%`^+<=>|~$0123456789";
+    let base = base_letter(c);
+    if base.is_ascii_alphabetic() {
+        return 1000 + (base.to_ascii_lowercase() as u32 - 'a' as u32);
+    }
+    if let Some(i) = ORDER.find(c) {
+        return i as u32 + 1;
+    }
+    // other characters come after ASCII's letters, in code point order
+    2000 + c as u32
+}
+
+/// string.CompareTo in en-US: by letter first, then by accent, and at the first difference of case only, lowercase goes first.
+/// Control characters count for nothing. Letters beyond Latin-1 sort in code point order, without ICU's tables
+pub fn compare_culture(a: &str, b: &str) -> std::cmp::Ordering {
+    let ignorable = |c: &char| c.is_ascii_control() && !matches!(c, '\t' | '\n' | '\u{b}' | '\u{c}' | '\r');
+    let keys = |s: &str| s.chars().filter(|c| !ignorable(c)).map(collation_primary).collect::<Vec<u32>>();
+    let accents = |s: &str| s.chars().filter(|c| !ignorable(c)).map(|c| if base_letter(c) == c { 0 } else { c.to_lowercase().next().unwrap_or(c) as u32 }).collect::<Vec<u32>>();
+    let case = |s: &str| s.chars().filter(|c| !ignorable(c)).map(char::is_uppercase).collect::<Vec<bool>>();
+    keys(a).cmp(&keys(b)).then_with(|| accents(a).cmp(&accents(b))).then_with(|| case(a).cmp(&case(b)))
+}
+
 /// A number with thousands separators (.NET's N0)
 pub fn n0(n: u64) -> String {
     let s = n.to_string();
@@ -170,6 +210,18 @@ mod tests {
         assert_eq!(number_n(82.8125, 3), "82.812");
         assert_eq!(number_n(999.9996, 3), "1,000.000");
         assert_eq!(number_n(1.785, 3), "1.785");
+    }
+
+    #[test]
+    fn culture_order() {
+        use std::cmp::Ordering::Less;
+        assert_eq!(compare_culture("a_b", "a-b"), Less);
+        assert_eq!(compare_culture("a-b", "a1"), Less);
+        assert_eq!(compare_culture("a", "A"), Less);
+        assert_eq!(compare_culture("A", "b"), Less);
+        assert_eq!(compare_culture("e", "\u{e9}"), Less);
+        assert_eq!(compare_culture("\u{e9}", "f"), Less);
+        assert_eq!(compare_culture("z", "\u{5b50}"), Less);
     }
 
     #[test]
