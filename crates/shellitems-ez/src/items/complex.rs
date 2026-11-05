@@ -1,6 +1,7 @@
 //! The shell item classes with most to read: files and folders, property views.
 
 use ez_common::Timestamp;
+use ez_common::json::Value;
 use ez_common::net::{NetResult, byte_at, copy, i16_at, i32_at, i64_at, u16_at, u32_at, u64_at, unicode_string};
 
 use super::simple::block_at;
@@ -108,6 +109,7 @@ pub fn new_0x35(raw: &[u8]) -> NetResult<ShellItem> {
 pub fn new_0x36(raw: &[u8]) -> NetResult<ShellItem> {
     let mut item = wrapper("ShellBag0X36", raw)?;
     item.friendly_name = "File".to_string();
+    item.bag_type = "File";
     Ok(item)
 }
 pub fn new_0x39(raw: &[u8]) -> NetResult<ShellItem> {
@@ -145,6 +147,7 @@ pub fn new_0x32(raw: &[u8]) -> NetResult<ShellItem> {
     };
     if byte_at(raw, 4)? == 0x10 && !has_beef0004(raw) {
         item.friendly_name = "ZipFileContents".to_string();
+        item.bag_type = "ZipFileContents";
         let modified = Some(from_file_time(i64_at(raw, 16)?));
         item.last_modification = modified;
         let len1 = i32::from(i16_at(raw, 28)?);
@@ -157,6 +160,7 @@ pub fn new_0x32(raw: &[u8]) -> NetResult<ShellItem> {
         return Ok(item);
     }
     let size = u32_at(raw, 4)? as i32;
+    item.set("FileSize", Value::number(size));
     let modified = crate::utils::dos_time(array_copy(raw, 8, 4)?)?;
     item.last_modification = modified;
     let mut index = 14i64;
@@ -236,6 +240,7 @@ fn view_blocks(item: &mut ShellItem, raw: &[u8], mut index: i64) -> NetResult<()
 /// unless one is read) have it. The text shows the store's sheets
 pub(super) fn property_view(item: &mut ShellItem, raw: &[u8], guids: bool) -> NetResult<()> {
     item.friendly_name = "Variable: Users property view".to_string();
+    item.bag_type = "User";
     let mut index = 10i64;
     let list_size = i16_at(raw, index)?;
     index += 2;
@@ -278,16 +283,22 @@ fn store_part(item: &mut ShellItem) {
 
 fn process_guid(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
     item.friendly_name = "Root folder: GUID".to_string();
+    item.bag_type = "Guid";
     item.value = guid_name(&guid_text(array_copy(raw, 4, 16)?)?);
     Ok(())
 }
 
 fn windows_backup(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
     item.friendly_name = "Windows Backup".to_string();
+    item.bag_type = "Backup";
     let backup = from_file_time(i64_at(raw, 0xc)?);
     let modified = from_file_time(i64_at(raw, 0x14)?);
     let created = from_file_time(i64_at(raw, 0x1c)?);
     let unknown = from_file_time(i64_at(raw, 0x24)?);
+    item.set("BackupDateTime", Value::time(backup));
+    item.set("ModifiedDateFromBackup", Value::time(modified));
+    item.set("CreatedDateFromBackup", Value::time(created));
+    item.set("BackupUnknownDateTime", Value::time(unknown));
     let mut index = 0x24i64 + 8 + 12;
     let name_length = i64::from(i16_at(raw, index)?);
     index += 2;
@@ -353,6 +364,7 @@ fn root_item(class: &'static str, raw: &[u8], careful: bool) -> NetResult<ShellI
     if byte_at(raw, 4)? == 0x2f {
         item.value = ansi_at(raw, 13, 3)?;
         item.friendly_name = "Users property view: Drive letter".to_string();
+        item.bag_type = "DriveLetter";
         return Ok(item);
     }
     match byte_at(raw, 3)? & 0x70 {
@@ -398,6 +410,7 @@ fn root_item(class: &'static str, raw: &[u8], careful: bool) -> NetResult<ShellI
         return Ok(item);
     }
     item.friendly_name = "Users property view".to_string();
+    item.bag_type = "User";
     let mut reader = Reader { raw, at: 0 };
     reader.bytes(3);
     reader.bytes(1);
@@ -597,6 +610,7 @@ fn url_container(item: &mut ShellItem, zero: &mut Zero, raw: &[u8]) -> NetResult
 
 fn ftp_sub_item(item: &mut ShellItem, zero: &mut Zero, raw: &[u8]) -> NetResult<()> {
     item.friendly_name = "Variable: FTP URI".to_string();
+    item.bag_type = "FtpUri";
     if u32_at(raw, 6)? == FTP_FILE_SIGNATURE {
         item.friendly_name = "Variable: FTP file".to_string();
         zero.is_ftp_file = true;
@@ -619,6 +633,7 @@ fn ftp_sub_item(item: &mut ShellItem, zero: &mut Zero, raw: &[u8]) -> NetResult<
 
 fn zero_property_view(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
     item.friendly_name = "Variable: Users property view".to_string();
+    item.bag_type = "User";
     let mut index = 10i64;
     let list_size = i16_at(raw, index)?;
     index += 2;
@@ -652,6 +667,7 @@ fn zero_property_view(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
         if raw.len() > 0x28 && (raw[0x28] == 0x2f || (raw[0x24] == 0x4e && raw[0x26] == 0x2f && raw[0x28] == 0x41)) {
             let zip = new_zip_contents(raw)?;
             item.friendly_name = zip.friendly_name;
+            item.bag_type = zip.bag_type;
             item.value_is_null = zip.value_is_null;
             item.value = zip.value;
             return Ok(());
@@ -659,6 +675,7 @@ fn zero_property_view(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
         if raw.len() > 8 && raw[4..8] == *b"AugM" {
             let cd = new_cd_burn(raw)?;
             item.friendly_name = cd.friendly_name;
+            item.bag_type = cd.bag_type;
             item.value_is_null = cd.value_is_null;
             item.value = cd.value;
             return Ok(());
@@ -755,6 +772,10 @@ fn zero_parts(item: &mut ShellItem, zero: &Zero) {
     parts.push(Part::Text(s));
     item.parts = parts;
     item.short_name = Some(zero.short_name.clone());
+    item.set("FTPFolderTime", Value::opt_time(zero.ftp_time));
+    item.set("IsFtpFile", Value::Bool(zero.is_ftp_file));
+    item.set("FileSize", Value::number(zero.file_size));
+    item.set("FullUrl", Value::opt_text(zero.full_url.as_deref()));
 }
 
 /// new ShellBag0X00
@@ -781,6 +802,7 @@ pub fn new_0x00(raw: &[u8]) -> NetResult<ShellItem> {
         }
         0x10 => {
             item.friendly_name = "ZipFileContents".to_string();
+            item.bag_type = "ZipFileContents";
             let zip = new_0x65(raw)?;
             item.value_is_null = zip.value_is_null;
             item.value = zip.value;
@@ -822,6 +844,7 @@ pub fn new_0x00(raw: &[u8]) -> NetResult<ShellItem> {
         _ => {
             if raw.len() <= 0x60 {
                 item.friendly_name = "Server name".to_string();
+                item.bag_type = "Network";
                 item.value = unicode_string(raw, 6, raw.len() as i64 - 6)?.replace('\0', "");
                 item.value_is_null = false;
             } else {

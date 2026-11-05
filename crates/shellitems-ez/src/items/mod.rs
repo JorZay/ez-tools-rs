@@ -6,6 +6,7 @@ mod simple;
 mod special;
 
 use ez_common::Timestamp;
+use ez_common::json::Value;
 use ez_common::net::{NetResult, byte_at, hex, i32_at, u32_at};
 
 use crate::blocks::Block;
@@ -31,6 +32,8 @@ pub(crate) enum Part {
 pub struct ShellItem {
     /// Its class's name, as the original's
     pub class: &'static str,
+    /// ShellBagType
+    pub bag_type: &'static str,
     pub friendly_name: String,
     pub value: String,
     pub raw: Vec<u8>,
@@ -49,6 +52,8 @@ pub struct ShellItem {
     pub error_message: Option<String>,
     /// Value was left null, which tells some readers it wasn't this class after all
     pub value_is_null: bool,
+    /// The class's other properties that are serialized, in any order: `own_properties` has the order
+    pub(crate) props: Vec<(&'static str, Value)>,
     pub(crate) parts: Vec<Part>,
     pub(crate) after: String,
     /// ToString() with no shared text (ShellBagUnknown and ShellBagParseError)
@@ -61,6 +66,7 @@ impl ShellItem {
     pub(crate) fn new(class: &'static str, friendly_name: &str, raw: &[u8]) -> ShellItem {
         ShellItem {
             class,
+            bag_type: default_bag_type(class),
             friendly_name: friendly_name.to_string(),
             value: String::new(),
             raw: raw.to_vec(),
@@ -74,11 +80,110 @@ impl ShellItem {
             delegate_extension_blocks: Vec::new(),
             error_message: None,
             value_is_null: false,
+            props: Vec::new(),
             parts: Vec::new(),
             after: String::new(),
             own_text: false,
             base_only: false,
         }
+    }
+
+    /// Keeps a property for serializing
+    pub(crate) fn set(&mut self, name: &'static str, value: Value) {
+        self.props.retain(|(n, _)| *n != name);
+        self.props.push((name, value));
+    }
+
+    /// A property of `own_properties`
+    fn property(&self, name: &str) -> Value {
+        if let Some((_, value)) = self.props.iter().find(|(n, _)| *n == name) {
+            return value.clone();
+        }
+        let store = |s: &Option<PropertyStore>| s.as_ref().map_or(Value::Null, PropertyStore::to_value);
+        match name {
+            "ShortName" => Value::opt_text(self.short_name.as_deref()),
+            "LastModificationTime" => Value::opt_time(self.last_modification),
+            "LastAccessTime" => Value::opt_time(self.last_access),
+            "DriveLetter" => Value::opt_text(self.drive_letter.as_deref()),
+            // these two classes start with an empty store
+            "PropertyStore" if self.property_store.is_none() && matches!(self.class, "ShellBag0X78" | "ShellBagCDBurn") => PropertyStore::default().to_value(),
+            // the first of its stores, or a new one
+            "PropertyStore" if self.class == "ShellBag0X00" => self.property_stores.first().cloned().unwrap_or_default().to_value(),
+            "PropertyStore" => store(&self.property_store),
+            "PropertyStores" => Value::List(self.property_stores.iter().map(PropertyStore::to_value).collect()),
+            "DelegateExtensionBlocks" => Value::List(self.delegate_extension_blocks.iter().map(Block::to_value).collect()),
+            "FileSize" => Value::number(0),
+            "IsFtpFile" => Value::Bool(false),
+            _ => Value::Null,
+        }
+    }
+
+    /// The properties ServiceStack serializes, with the type name it adds for an IShellBag. The class's own come first
+    pub fn to_value(&self) -> Value {
+        let assembly = if self.class == "ShellBagDamaged" { "Lnk.ShellItems.ShellBagDamaged, Lnk".to_string() } else { format!("ExtensionBlocks.{}, ExtensionBlocks", self.class) };
+        let mut list = vec![("__type", Value::Text(assembly))];
+        let blocks = Value::List(self.extension_blocks.iter().map(Block::to_value).collect());
+        let value = if self.value_is_null { Value::Null } else { Value::text(self.value.as_str()) };
+        let name = Value::text(self.friendly_name.as_str());
+        let id = Value::Text(internal_id());
+        let hex_value = Value::bytes(&self.raw);
+        let empty = || Value::text("");
+        let minus_one = || Value::number(-1);
+        let no_bags = || Value::List(Vec::new());
+        let bag_type = Value::text(self.bag_type);
+        if self.own_text {
+            // ShellBagUnknown and ShellBagParseError aren't ShellBags: they declare it all themselves, in their own orders
+            list.push(("ExtensionBlocks", blocks));
+            list.push(("InternalId", id));
+            list.push(("FriendlyName", name));
+            if self.class == "ShellBagParseError" {
+                list.push(("IsDeleted", Value::Bool(false)));
+                list.push(("HexValue", hex_value));
+                list.push(("BagPath", empty()));
+                list.push(("AbsolutePath", empty()));
+                list.push(("ShellBagType", bag_type));
+                list.push(("Slot", minus_one()));
+            } else {
+                list.push(("HexValue", hex_value));
+                list.push(("BagPath", empty()));
+                list.push(("AbsolutePath", empty()));
+                list.push(("ShellBagType", bag_type));
+                list.push(("Slot", minus_one()));
+                list.push(("IsDeleted", Value::Bool(false)));
+            }
+            list.push(("MruPosition", minus_one()));
+            list.push(("NodeSlot", Value::number(0)));
+            list.push(("ChildShellBags", no_bags()));
+            list.push(("Value", value));
+            list.push(("HasExplored", Value::Bool(false)));
+            list.push(("NodeId", Value::number(0)));
+            return Value::object(list);
+        }
+        if self.class == "ShellBagDamaged" {
+            list.push(("ItemType", Value::number(self.raw.get(2).copied().filter(|_| self.raw.len() > 2).unwrap_or(0))));
+            list.push(("RawBytes", Value::bytes(&self.raw)));
+            list.push(("ErrorMessage", Value::opt_text(self.error_message.as_deref())));
+        }
+        for own in own_properties(self.class) {
+            list.push((own, self.property(own)));
+        }
+        list.extend([
+            ("InternalId", id),
+            ("FriendlyName", name),
+            ("HexValue", hex_value),
+            ("BagPath", empty()),
+            ("Slot", minus_one()),
+            ("IsDeleted", Value::Bool(false)),
+            ("MruPosition", minus_one()),
+            ("NodeSlot", Value::number(0)),
+            ("ChildShellBags", no_bags()),
+            ("Value", value),
+            ("HasExplored", Value::Bool(false)),
+            ("ShellBagType", bag_type),
+            ("ExtensionBlocks", blocks),
+            ("NodeId", Value::number(0)),
+        ]);
+        Value::object(list)
     }
 
     pub(crate) fn set_before_line(&mut self, line: Option<String>) {
@@ -131,6 +236,90 @@ impl ShellItem {
         s.push('\n');
         s.push_str(&self.after);
         s
+    }
+}
+
+/// InternalId: a new GUID for each item, as Guid.NewGuid() makes
+fn internal_id() -> String {
+    use std::hash::{BuildHasher, Hasher};
+    let random = |salt: u64| {
+        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+        h.write_u64(salt);
+        h.finish()
+    };
+    let (a, b) = (random(1), random(2));
+    let c = (b & 0x3fff_ffff_ffff_ffff) | 0x8000_0000_0000_0000;
+    format!("{:08x}-{:04x}-4{:03x}-{:04x}-{:012x}", a >> 32, (a >> 16) & 0xffff, a & 0xfff, c >> 48, c & 0xffff_ffff_ffff)
+}
+
+/// What the constructors set first. Those that read more change it
+fn default_bag_type(class: &str) -> &'static str {
+    match class {
+        "ShellBag0X00" => "Variable",
+        "ShellBag0X01" | "ShellBag0X2E" => "ControlPanelCategory",
+        "ShellBag0X02" => "HyperVResource",
+        "ShellBag0X03" | "ShellBagUnknown" => "Unknown",
+        "ShellBag0X1D" => "NotAssigned",
+        "ShellBag0X21" | "ShellBag0X4D" | "ShellBag0X4E" | "ShellBag0X53" | "ShellBag0X70" | "ShellBag0X71" | "ShellBag0X74" => "Guid",
+        "ShellBag0X23" | "ShellBag0X25" | "ShellBag0X2A" | "ShellBag0X2F" => "DriveLetter",
+        "ShellBag0X2C" | "ShellBag0X78" | "ShellBagCFSF" => "User",
+        "ShellBag0X32" => "File",
+        "ShellBag0X41" | "ShellBag0X42" | "ShellBag0X43" | "ShellBag0X46" | "ShellBag0X47" | "ShellBag0XC3" => "Network",
+        "ShellBag0X52" => "Backup",
+        "ShellBag0X61" => "FtpUri",
+        "ShellBag0X64" | "ShellBag0X67" | "ShellBag0X69" => "History",
+        "ShellBagArchiveContents" | "ShellBagZipContents" => "ZipFileContents",
+        "ShellBagCDBurn" => "OpticalMedia",
+        "ShellBagMTPDevice" => "MtpDevice",
+        "ShellBagMTPFolder" => "MtpFolder",
+        "ShellBagMTPStorage" => "MtpStorage",
+        "ShellBagParseError" | "ShellBagDamaged" => "ParseError",
+        // the enum's first value, which is also what a class that sets nothing has
+        _ => "Directory",
+    }
+}
+
+/// Each class's own properties, in the order .NET's reflection gives them
+fn own_properties(class: &str) -> &'static [&'static str] {
+    const FILE_ENTRY: &[&str] = &["ShortName", "LastModificationTime", "LastAccessTime"];
+    const TIME: &[&str] = &["Timestamp"];
+    const TWO_TIMES: &[&str] = &["Timestamp", "Timestamp2"];
+    const DESCRIPTION: &[&str] = &["Description"];
+    const STORE: &[&str] = &["PropertyStore"];
+    const MODIFIED: &[&str] = &["ModifiedOn"];
+    const BACKUP: &[&str] = &["PropertyStore", "ModifiedDateFromBackup", "CreatedDateFromBackup", "BackupDateTime", "BackupUnknownDateTime", "LastAccessTime"];
+    match class {
+        "ShellBag0X00" => &["PropertyStore", "PropertyStores", "DelegateExtensionBlocks", "LastModificationTime", "CreatedOnTime", "LastAccessTime", "FTPFolderTime", "IsFtpFile", "FileSize", "Miscellaneous", "FullUrl", "ShortName"],
+        "ShellBag0X01" => &["DriveLetter"],
+        "ShellBag0X02" => &["LastModificationTime", "CreatedOnTime", "LastAccessTime", "ShortName"],
+        "ShellBag0X04" => &["ExtraData"],
+        "ShellBag0X09" | "ShellBag0X0F" | "ShellBag0X10" | "ShellBag0X18" | "ShellBag0X1A" | "ShellBag0X2B" | "ShellBag0X87" | "ShellBag0X94" | "ShellBag0XB2" | "ShellBag0XB6" | "ShellBag0XB8" | "ShellBag0XBD" | "ShellBag0XC0"
+        | "ShellBag0XC6" | "ShellBag0XCA" | "ShellBag0XF3" | "ShellBag0XF4" => TIME,
+        "ShellBag0X0A" | "ShellBag0X11" | "ShellBag0X16" => TWO_TIMES,
+        "ShellBag0X1D" => &["FileTime1", "URI"],
+        "ShellBag0X1F" | "ShellBag0X79" => BACKUP,
+        "ShellBag0X2E" => &["LastAccessTime", "PropertyStore", "Category", "DevicePath"],
+        "ShellBag0X31" => &["LastModificationTime", "LastAccessTime", "ShortName"],
+        "ShellBag0X32" => &["FileSize", "LastModificationTime", "LastAccessTime", "ShortName"],
+        "ShellBag0X35" | "ShellBag0X36" | "ShellBag0X39" | "ShellBag0X3A" | "ShellBag0X3D" | "ShellBag0XB1" | "ShellBag0XB5" => FILE_ENTRY,
+        "ShellBag0X41" | "ShellBag0X42" | "ShellBag0X43" | "ShellBag0X46" | "ShellBag0X47" | "ShellBag0X5C" | "ShellBag0X63" => DESCRIPTION,
+        "ShellBag0X4D" | "ShellBag0X71" | "ShellBag0X74" | "ShellBag0X78" => STORE,
+        "ShellBag0X4E" => &["LastAccessTime", "PropertyStore"],
+        "ShellBag0X50" => &["FileTime1"],
+        "ShellBag0X52" => &["LastAccessTime"],
+        "ShellBag0X54" | "ShellBag0X65" | "ShellBag0X69" | "ShellBag0X80" => MODIFIED,
+        "ShellBag0X61" => &["FileTime1", "ModifiedOn", "URI", "UserName"],
+        "ShellBag0XC3" => &["LocationDescription"],
+        "ShellBagArchiveContents" => &["FileAttributes", "FileSize", "ModifiedOn", "ArchivePath"],
+        "ShellBagCDBurn" => &["PropertyStore", "LastModificationTime", "CreatedOnTime", "LastAccessTime", "FileSize", "Miscellaneous", "ShortName"],
+        "ShellBagCFSF" => &["FileSize", "LastModificationTime", "LastAccessTime"],
+        "ShellBagDocumentDrive" => &["ItemId", "ParentId", "CreatedOn", "ModifiedOn", "AccessedOn"],
+        "ShellBagFindData" => &["FileAttributes", "FileSize", "CreatedOn", "AccessedOn", "ModifiedOn", "SecondName"],
+        "ShellBagMTPDevice" => &["ClassId", "DeviceName", "DevicePath", "DevicePropsGuid", "FunctionalObjectGuid", "FunctionalCategoryGuid", "DelegateFolderGuid", "PortableDeviceId"],
+        "ShellBagMTPFolder" => &["FolderName", "FolderName2", "PropertyArrays"],
+        "ShellBagMTPStorage" => &["PropertyArrays", "FileSystemName2", "StorageName", "PersistentUniqueId", "FileSystemName", "WpdEventHandlers", "StorageSerialNumber"],
+        "ShellBagZipContents" => &["LastAccessTime", "LastAccessTimeString", "ParentFolder"],
+        _ => &[],
     }
 }
 

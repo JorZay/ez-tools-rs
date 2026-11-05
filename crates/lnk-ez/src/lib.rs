@@ -6,6 +6,7 @@ mod extra;
 use std::path::Path;
 
 use ez_common::Timestamp;
+use ez_common::json::Value;
 use ez_common::net::{enum_name, flags_name, unicode_string};
 use shellitems_ez::ShellItem;
 use shellitems_ez::items::{create_with_code_page, new_damaged};
@@ -218,6 +219,12 @@ pub struct Header {
     pub icon_index: i32,
     pub show_window: i32,
     pub hot_key: String,
+    pub target_created_raw: i64,
+    pub target_modified_raw: i64,
+    pub target_accessed_raw: i64,
+    pub reserved0: i16,
+    pub reserved1: i32,
+    pub reserved2: i32,
 }
 
 impl Header {
@@ -244,6 +251,12 @@ impl Header {
                 icon_index: u32_at(56) as i32,
                 show_window: u32_at(60) as i32,
                 hot_key: hot_key(raw[64], raw[65]),
+                target_created_raw: raws[0],
+                target_modified_raw: raws[2],
+                target_accessed_raw: raws[1],
+                reserved0: i16::from_le_bytes([raw[66], raw[67]]),
+                reserved1: u32_at(68) as i32,
+                reserved2: u32_at(72) as i32,
             },
             raws,
         ))
@@ -272,6 +285,33 @@ impl Header {
     pub fn show_window_description(&self) -> String {
         pick(SHOW_WINDOW, i64::from(self.show_window), true)
     }
+
+    /// Whether the show window value is one the enum names
+    pub fn show_window_is_defined(&self) -> bool {
+        SHOW_WINDOW.iter().any(|(_, v, _)| *v == i64::from(self.show_window))
+    }
+
+    /// The properties ServiceStack serializes
+    pub fn to_value(&self) -> Value {
+        Value::object(vec![
+            ("Signature", Value::guid(GOOD_SIGNATURE)),
+            ("DataFlags", Value::number(self.data_flags)),
+            ("FileAttributes", Value::number(self.file_attributes)),
+            ("TargetCreationDate", Value::required_time(self.target_created)),
+            ("TargetModificationDate", Value::required_time(self.target_modified)),
+            ("TargetLastAccessedDate", Value::required_time(self.target_accessed)),
+            ("TargetCreationDateRaw", Value::number(self.target_created_raw)),
+            ("TargetModificationDateRaw", Value::number(self.target_modified_raw)),
+            ("TargetLastAccessedDateRaw", Value::number(self.target_accessed_raw)),
+            ("FileSize", Value::number(self.file_size)),
+            ("IconIndex", Value::number(self.icon_index)),
+            ("HotKey", Value::text(self.hot_key.as_str())),
+            ("ShowWindow", Value::text(self.show_window_text())),
+            ("Reserved0", Value::number(self.reserved0)),
+            ("Reserved1", Value::number(self.reserved1)),
+            ("Reserved2", Value::number(self.reserved2)),
+        ])
+    }
 }
 
 pub const HAS_TARGET_ID_LIST: i32 = 0x1;
@@ -288,6 +328,9 @@ pub struct VolumeInfo {
     pub drive_type: i32,
     pub serial_number: String,
     pub label: String,
+    pub size: i32,
+    pub label_offset: i32,
+    pub label_offset_unicode: i32,
 }
 
 impl VolumeInfo {
@@ -296,18 +339,37 @@ impl VolumeInfo {
         ensure_range(raw, 0, 0x10, FIELD, -1)?;
         let u32_at = |at: usize| u32::from_le_bytes(raw[at..at + 4].try_into().unwrap());
         let label_offset = u32_at(12) as i32;
+        let mut label_offset_unicode = 0;
         let label = if label_offset == 0x14 {
             let unicode_offset = read_i32(raw, 0x10, FIELD)?;
+            label_offset_unicode = unicode_offset;
             read_unicode_z(raw, i64::from(unicode_offset), FIELD, -1)?
         } else {
             read_ansi_z(raw, i64::from(label_offset), code_page, FIELD, -1)?
         };
-        Ok(VolumeInfo { drive_type: u32_at(4) as i32, serial_number: format!("{:08X}", u32_at(8)), label })
+        Ok(VolumeInfo { drive_type: u32_at(4) as i32, serial_number: format!("{:08X}", u32_at(8)), label, size: u32_at(0) as i32, label_offset, label_offset_unicode })
     }
 
     /// The drive type's description, or its number
     pub fn drive_type_description(&self) -> String {
         pick(DRIVE_TYPES, i64::from(self.drive_type), true)
+    }
+
+    /// Whether the drive type is one the enum names
+    pub fn drive_type_is_defined(&self) -> bool {
+        DRIVE_TYPES.iter().any(|(_, v, _)| *v == i64::from(self.drive_type))
+    }
+
+    /// The properties ServiceStack serializes
+    pub fn to_value(&self) -> Value {
+        Value::object(vec![
+            ("DriveType", Value::text(pick(DRIVE_TYPES, i64::from(self.drive_type), false))),
+            ("Size", Value::number(self.size)),
+            ("VolumeSerialNumber", Value::text(self.serial_number.as_str())),
+            ("VolumeLabelOffset", Value::number(self.label_offset)),
+            ("VolumeLabelOffsetUnicode", Value::number(self.label_offset_unicode)),
+            ("VolumeLabel", Value::text(self.label.as_str())),
+        ])
     }
 }
 
@@ -319,6 +381,11 @@ pub struct NetworkShareInfo {
     pub provider_type: i32,
     pub share_name: String,
     pub device_name: String,
+    pub size: i32,
+    pub name_offset: i32,
+    pub device_offset: i32,
+    pub name_offset_unicode: i32,
+    pub device_offset_unicode: i32,
 }
 
 impl NetworkShareInfo {
@@ -333,12 +400,15 @@ impl NetworkShareInfo {
         let mut share_name = read_ansi_z(raw, i64::from(name_offset), code_page, FIELD, -1)?;
         let valid_device = share_flags & 1 == 1;
         let mut device_name = String::new();
+        let (mut name_offset_unicode, mut device_offset_unicode) = (0, 0);
         if valid_device && device_offset > 0 {
             device_name = read_ansi_z(raw, i64::from(device_offset), code_page, FIELD, -1)?;
         }
         if name_offset > 0x14 {
             let unicode_name = read_i32(raw, 0x14, FIELD)?;
             let unicode_device = read_i32(raw, 0x18, FIELD)?;
+            name_offset_unicode = unicode_name;
+            device_offset_unicode = unicode_device;
             if unicode_name > 0 {
                 share_name = read_unicode_z(raw, i64::from(unicode_name), FIELD, -1)?;
             }
@@ -346,7 +416,7 @@ impl NetworkShareInfo {
                 device_name = read_unicode_z(raw, i64::from(unicode_device), FIELD, -1)?;
             }
         }
-        Ok(NetworkShareInfo { share_flags, provider_type, share_name, device_name })
+        Ok(NetworkShareInfo { share_flags, provider_type, share_name, device_name, size: i32_at(0), name_offset, device_offset, name_offset_unicode, device_offset_unicode })
     }
 
     pub fn has_valid_provider_type(&self) -> bool {
@@ -359,6 +429,22 @@ impl NetworkShareInfo {
 
     pub fn share_flags_text(&self) -> String {
         flags_name(i64::from(self.share_flags), SHARE_FLAGS)
+    }
+
+    /// The properties ServiceStack serializes
+    pub fn to_value(&self) -> Value {
+        Value::object(vec![
+            ("Size", Value::number(self.size)),
+            ("ShareFlags", Value::number(self.share_flags)),
+            ("NetworkShareNameOffset", Value::number(self.name_offset)),
+            ("DeviceNameOffset", Value::number(self.device_offset)),
+            ("NetworkShareNameOffsetUnicode", Value::number(self.name_offset_unicode)),
+            ("DeviceNameOffsetUnicode", Value::number(self.device_offset_unicode)),
+            ("HasValidProviderType", Value::Bool(self.has_valid_provider_type())),
+            ("NetworkProviderType", Value::text(self.provider_type_text())),
+            ("NetworkShareName", Value::text(self.share_name.as_str())),
+            ("DeviceName", Value::text(self.device_name.as_str())),
+        ])
     }
 }
 
@@ -426,9 +512,40 @@ pub struct LnkFile {
     pub arguments: Option<String>,
     pub icon_location: Option<String>,
     pub parse_errors: Vec<String>,
+    pub raw_bytes: Vec<u8>,
+    pub extra_data_terminated: bool,
+    pub trailing_data_size: i32,
 }
 
 impl LnkFile {
+    /// The properties ServiceStack serializes
+    pub fn to_value(&self) -> Value {
+        let opt = |o: &Option<String>| Value::opt_text(o.as_deref());
+        Value::object(vec![
+            ("TargetIDs", Value::List(self.target_ids.iter().map(ShellItem::to_value).collect())),
+            ("ExtraBlocks", Value::List(self.extra_blocks.iter().map(ExtraBlock::to_value).collect())),
+            ("SourceCreated", Value::opt_time(self.source.created)),
+            ("SourceModified", Value::opt_time(self.source.modified)),
+            ("SourceAccessed", Value::opt_time(self.source.accessed)),
+            ("CommonPath", opt(&self.common_path)),
+            ("LocalPath", opt(&self.local_path)),
+            ("VolumeInfo", self.volume_info.as_ref().map_or(Value::Null, VolumeInfo::to_value)),
+            ("NetworkShareInfo", self.network_share_info.as_ref().map_or(Value::Null, NetworkShareInfo::to_value)),
+            ("SourceFile", opt(&self.source_file)),
+            ("RawBytes", Value::bytes(&self.raw_bytes)),
+            ("Header", self.header.to_value()),
+            ("Name", opt(&self.name)),
+            ("RelativePath", opt(&self.relative_path)),
+            ("WorkingDirectory", opt(&self.working_directory)),
+            ("Arguments", opt(&self.arguments)),
+            ("IconLocation", opt(&self.icon_location)),
+            ("LocationFlags", Value::number(self.location_flags)),
+            ("ParseErrors", Value::strings(&self.parse_errors)),
+            ("ExtraDataTerminated", Value::Bool(self.extra_data_terminated)),
+            ("TrailingDataSize", Value::number(self.trailing_data_size)),
+        ])
+    }
+
     /// LocationFlags.ToString()
     pub fn location_flags_text(&self) -> String {
         flags_name(i64::from(self.location_flags), LOCATION_FLAGS)
@@ -603,7 +720,7 @@ fn parse_link_info(raw: &[u8], start: i64, size: i64, code_page: i32, errors: &m
 
 /// The file's times as .NET gives them: on Unix, where it doesn't read the birth time, the creation time is the older of the
 /// last write and last change times. A time in 1601 means none
-fn file_times(path: &str) -> SourceTimes {
+pub fn file_times(path: &str) -> SourceTimes {
     let Ok(metadata) = std::fs::symlink_metadata(path) else { return SourceTimes::default() };
     let from_unix = |seconds: i64, nanos: i64| -> Option<Timestamp> {
         let stamp = Timestamp(621_355_968_000_000_000 + seconds * 10_000_000 + nanos / 100);
@@ -644,6 +761,9 @@ fn parse(raw: &[u8], source_file: Option<&str>, code_page: i32, check_text_mode:
         arguments: None,
         icon_location: None,
         parse_errors: Vec::new(),
+        raw_bytes: raw.to_vec(),
+        extra_data_terminated: false,
+        trailing_data_size: 0,
     };
     if let Some(path) = source_file.filter(|p| !p.is_empty()) {
         file.source_file = Some(ez_common::cli::full_path(path));
@@ -721,6 +841,8 @@ fn parse(raw: &[u8], source_file: Option<&str>, code_page: i32, check_text_mode:
         index += block_size;
     }
     let trailing = raw.len() as i64 - index;
+    file.extra_data_terminated = terminated;
+    file.trailing_data_size = trailing as i32;
     if !terminated && trailing == 0 {
         errors.push("ExtraData has no terminal block".to_string());
     } else if trailing > 0 {

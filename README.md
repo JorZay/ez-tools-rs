@@ -14,6 +14,7 @@ Each tool is a library (which never prints or exits, so other programs can use i
 | [AppCompatCacheParser](https://github.com/EricZimmerman/AppCompatCacheParser) → `appcompatcacheparser` | Done (`docs/plans/appcompatcache.md`) |
 | [SQLECmd](https://github.com/EricZimmerman/SQLECmd) → `sqlecmd` | Done, uses the original's maps unchanged (`docs/plans/sqlecmd.md`) |
 | [LECmd](https://github.com/EricZimmerman/LECmd) → `lecmd` | Done (`docs/plans/lecmd.md`) |
+| [JLECmd](https://github.com/EricZimmerman/JLECmd) → `jlecmd` | Done (`docs/plans/jlecmd.md`) |
 
 The upstream commits each port was built from are in `docs/upstream.md`.
 
@@ -244,3 +245,15 @@ in its repository) and run `tools/parity.sh <EvtxECmd.dll> <Maps> <folder of log
 ## License
 
 MIT. Ported from EvtxECmd and the evtx library, Copyright (c) Eric R. Zimmerman, MIT; see `LICENSE`.
+
+## jlecmd
+
+A port of JLECmd: jump lists (`*.automaticDestinations-ms`, `*.customDestinations-ms`) and the links inside them, to the console, CSV, JSON and XHTML, and the
+links themselves with `--dumpTo`. `tools/parity-jlecmd.sh` compares with the original, whose quirks are kept; `docs/plans/jlecmd.md` lists them.
+
+```
+cargo build --release -p jlecmd
+jlecmd -d /cases/host1 --csv /tmp/out --json /tmp/out -q
+jlecmd -f /cases/host1/f01b4d95cf55d32a.automaticDestinations-ms --fd
+jlecmd -d /cases/host1 --dumpTo /tmp/lnks -q
+```

@@ -1,6 +1,7 @@
 //! The 0xbeefXXXX extension blocks: `BeefBase` and its classes.
 
 use ez_common::Timestamp;
+use ez_common::json::Value;
 use ez_common::net::{NetResult, i16_at, u16_at, u32_at, u64_at, unicode_string};
 
 use crate::items::{self, ShellItem};
@@ -81,13 +82,15 @@ pub struct Block {
     pub version_offset: i32,
     pub message: String,
     pub kind: BlockKind,
+    /// BeefParseError's RawBytes
+    pub raw: Option<Vec<u8>>,
 }
 
 const UNSUPPORTED: &str = "Unsupported Extension block. Please report to Report to saericzimmerman@gmail.com to get it added!";
 const PURPOSE_UNKNOWN: &str = "The purpose of this extension block is unknown";
 
 fn header(class: &'static str, raw: &[u8]) -> NetResult<Block> {
-    Ok(Block { class, size: i32::from(u16_at(raw, 0)?), version: i32::from(u16_at(raw, 2)?), signature: u32_at(raw, 4)?, version_offset: 0, message: String::new(), kind: BlockKind::Plain })
+    Ok(Block { class, size: i32::from(u16_at(raw, 0)?), version: i32::from(u16_at(raw, 2)?), signature: u32_at(raw, 4)?, version_offset: 0, message: String::new(), kind: BlockKind::Plain, raw: None })
 }
 
 /// The check at the start of most classes
@@ -303,7 +306,7 @@ fn beef0026(raw: &[u8]) -> NetResult<Block> {
 
 /// new BeefPlaceHolder(null)
 pub fn place_holder() -> Block {
-    Block { class: "BeefPlaceHolder", size: 0, version: 0, signature: 0, version_offset: 0, message: String::new(), kind: BlockKind::PlaceHolder }
+    Block { class: "BeefPlaceHolder", size: 0, version: 0, signature: 0, version_offset: 0, message: String::new(), kind: BlockKind::PlaceHolder, raw: None }
 }
 
 /// Utils.GetExtensionBlockFromBytes
@@ -437,7 +440,7 @@ pub fn from_bytes(signature: i64, raw: &[u8]) -> NetResult<Block> {
 /// Utils.GetExtensionBlockFromBytesOrError: the type from its own signature byte, and a BeefParseError for what can't be read
 pub fn from_bytes_or_error(raw: &[u8]) -> Block {
     if raw.len() < 8 {
-        let mut block = Block { class: "BeefParseError", size: 0, version: 0, signature: 0, version_offset: 0, message: String::new(), kind: BlockKind::Plain };
+        let mut block = Block { class: "BeefParseError", size: 0, version: 0, signature: 0, version_offset: 0, message: String::new(), kind: BlockKind::Plain, raw: Some(raw.to_vec()) };
         block.message = format!("Extension block could not be parsed: only {} bytes", raw.len());
         return block;
     }
@@ -446,6 +449,7 @@ pub fn from_bytes_or_error(raw: &[u8]) -> Block {
         Err(e) => {
             let mut block = header("BeefParseError", raw).expect("8 bytes are there");
             block.message = format!("Extension block could not be parsed: {e}");
+            block.raw = Some(raw.to_vec());
             block
         }
     }
@@ -583,6 +587,71 @@ impl Block {
             }
         }
         s
+    }
+
+    /// The properties ServiceStack serializes, with the type name it adds for an IExtensionBlock
+    pub fn to_value(&self) -> Value {
+        let opt = |o: &Option<String>| Value::opt_text(o.as_deref());
+        let guids = |g1: &Option<String>, f1: &Option<String>| vec![("GUID1", opt(g1)), ("GUID1Folder", opt(f1))];
+        let mut own: Vec<(&'static str, Value)> = match &self.kind {
+            BlockKind::Plain | BlockKind::PlainExtraLine | BlockKind::PlaceHolder => Vec::new(),
+            BlockKind::Guid1 { guid, folder } => guids(guid, folder),
+            BlockKind::Guids { guid1, folder1, guid2, folder2 } => {
+                let mut list = guids(guid1, folder1);
+                list.push(("GUID2", opt(guid2)));
+                list.push(("GUID2Folder", opt(folder2)));
+                list
+            }
+            BlockKind::Beef0004 { created, last_access, identifier, mft, long_name, localised_name } => vec![
+                ("CreatedOnTime", Value::opt_time(*created)),
+                ("LastAccessTime", Value::opt_time(*last_access)),
+                ("Identifier", Value::number(identifier)),
+                (
+                    "MFTInformation",
+                    Value::object(vec![
+                        ("MFTEntryNumber", mft.entry_number.map_or(Value::Null, Value::number)),
+                        ("MFTSequenceNumber", mft.sequence_number.map_or(Value::Null, Value::number)),
+                        // read from bytes, it's only set when it says something; a block without these bytes has it empty
+                        ("Note", if mft.entry_number.is_some() && mft.note.is_empty() { Value::Null } else { Value::text(mft.note.as_str()) }),
+                    ]),
+                ),
+                ("LongName", Value::text(long_name.as_str())),
+                ("LocalisedName", Value::text(localised_name.as_str())),
+            ],
+            BlockKind::Beef0005 { internal_bags } => vec![("InternalBags", Value::List(internal_bags.iter().map(ShellItem::to_value).collect()))],
+            BlockKind::UserName(name) => vec![("UserName", Value::text(name.as_str()))],
+            BlockKind::Beef0008 { timestamp, original_path, recycle_bin_path } => {
+                vec![("RecycleBinPath", Value::text(recycle_bin_path.as_str())), ("OriginalPath", Value::text(original_path.as_str())), ("Timestamp", Value::time(*timestamp))]
+            }
+            BlockKind::Beef000b { file_strings, string_date } => vec![("FileStrings", Value::strings(file_strings)), ("StringDate", Value::required_time(*string_date))],
+            BlockKind::Beef000e { .. } => vec![("ExtensionBlocks", Value::List(Vec::new())), ("PropertyStores", Value::List(Vec::new()))],
+            BlockKind::Sheets(store) => vec![("PropertyStore", store.to_value())],
+            BlockKind::Value(value) => vec![("Value", Value::text(value.as_str()))],
+            BlockKind::Beef0017 { details } => vec![("SubShellDetails", Value::text(details.as_str()))],
+            BlockKind::FileDocumentType(text) => vec![("FileDocumentTypeString", Value::text(text.as_str()))],
+            BlockKind::Information(text) => vec![("Information", Value::text(text.as_str()))],
+            BlockKind::Executable(text) => vec![("Executable", Value::text(text.as_str()))],
+            BlockKind::PinType(text) => vec![("PinType", Value::text(text.as_str()))],
+            BlockKind::Beef0025 { file_time1, file_time2 } => vec![("FileTime1", Value::time(*file_time1)), ("FileTime2", Value::time(*file_time2))],
+            BlockKind::Beef0026 { store, created, modified, accessed } => vec![
+                ("PropertyStore", store.as_ref().map_or(Value::Null, PropertyStore::to_value)),
+                ("CreatedOn", Value::opt_time(*created)),
+                ("LastModified", Value::opt_time(*modified)),
+                ("LastAccessed", Value::opt_time(*accessed)),
+            ],
+        };
+        if let Some(raw) = &self.raw {
+            own.push(("RawBytes", Value::bytes(raw)));
+        }
+        let mut properties = vec![("__type", Value::text(format!("ExtensionBlocks.{}, ExtensionBlocks", self.class)))];
+        properties.extend(own);
+        // a place holder's base constructor returned at once, leaving the message null
+        properties.push(("Message", if self.is_place_holder() { Value::Null } else { Value::text(self.message.as_str()) }));
+        properties.push(("Size", Value::number(self.size)));
+        properties.push(("Version", Value::number(self.version)));
+        properties.push(("Signature", Value::number(self.signature)));
+        properties.push(("VersionOffset", Value::number(self.version_offset)));
+        Value::object(properties)
     }
 
     pub fn is_place_holder(&self) -> bool {

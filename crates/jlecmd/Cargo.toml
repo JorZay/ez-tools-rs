@@ -1,0 +1,16 @@
+[package]
+name = "jlecmd"
+description = "Reads Windows jump lists to the console, CSV, JSON and XHTML, with JLECmd's output"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+clap = { version = "4.6.7", features = ["derive", "wrap_help"] }
+ez-common = { version = "0.1.0", path = "../ez-common" }
+jumplist-ez = { version = "0.1.0", path = "../jumplist-ez" }
+lnk-ez = { version = "0.1.0", path = "../lnk-ez" }
+olecf-ez = { version = "0.1.0", path = "../olecf-ez" }
+shellitems-ez = { version = "0.1.0", path = "../shellitems-ez" }

@@ -1,6 +1,7 @@
 //! The shell item classes with little of their own.
 
 use ez_common::Timestamp;
+use ez_common::json::Value;
 use ez_common::net::{NetResult, byte_at, copy, i16_at, i64_at, u32_at, unicode_string};
 
 use super::*;
@@ -12,6 +13,7 @@ pub fn new_0x01(raw: &[u8]) -> NetResult<ShellItem> {
     item.drive_letter = Some(String::new());
     if byte_at(raw, 8)? == 0x3a && byte_at(raw, 9)? == 0 {
         item.friendly_name = "Hyper-V storage volume".into();
+        item.bag_type = "HyperVResource";
         let letter = unicode_string(raw, 6, 4)?.replace('\0', "");
         item.value = unicode_string(raw, 0x32, raw.len() as i64 - 0x32)?.replace('\0', "");
         item.set_before_line(if letter.is_empty() { None } else { Some(format!("Drive Letter: {letter}\n\n")) });
@@ -61,6 +63,7 @@ pub fn new_0x02(raw: &[u8]) -> NetResult<ShellItem> {
     item.set_before_line(Some(before));
     item.last_modification = Some(modified);
     item.last_access = accessed;
+    item.set("CreatedOnTime", Value::time(created));
     Ok(item)
 }
 
@@ -93,6 +96,7 @@ fn time_and_name(class: &'static str, raw: &[u8], time_at: i64, name_at: i64) ->
     let text = ansi_at(raw, name_at, raw.len() as i64 - name_at)?;
     item.value = text.split('\0').next().unwrap_or_default().to_string();
     item.set_before_line(Some(format!("Timestamp: {}\n", time_text(time))));
+    item.set("Timestamp", Value::time(time));
     Ok(item)
 }
 
@@ -127,6 +131,8 @@ pub fn new_0x0a(raw: &[u8]) -> NetResult<ShellItem> {
     let t1 = from_oa_date(f64::from_le_bytes(ez_common::net::bytes_at::<8>(raw, index)?))?;
     index += 8 + 4 + 2;
     let t2 = from_oa_date(f64::from_le_bytes(ez_common::net::bytes_at::<8>(raw, index)?))?;
+    item.set("Timestamp", Value::time(t1));
+    item.set("Timestamp2", Value::time(t2));
     index += 8 + 0x18;
     size = i16_at(raw, index)?;
     index += 2;
@@ -151,6 +157,8 @@ pub fn new_0x11(raw: &[u8]) -> NetResult<ShellItem> {
     let text = unicode_string(raw, 0x2e, raw.len() as i64 - 0x2e)?;
     item.value = text.split('\0').next().unwrap_or_default().to_string();
     item.set_before_line(Some(format!("Timestamp: {}Timestamp2: {}\n", time_text(t1), time_text(t2))));
+    item.set("Timestamp", Value::time(t1));
+    item.set("Timestamp2", Value::time(t2));
     Ok(item)
 }
 
@@ -161,6 +169,7 @@ pub fn new_0x1a(raw: &[u8]) -> NetResult<ShellItem> {
         let text = ansi_at(raw, 0x26, raw.len() as i64 - 0x26)?;
         item.value = text.split('\0').next().unwrap_or_default().to_string();
         item.set_before_line(Some(format!("Timestamp: {}", time_text(time))));
+        item.set("Timestamp", Value::time(time));
         return Ok(item);
     }
     item.value = ansi_at(raw, 0xb8, raw.len() as i64 - 0xb8)?.trim_matches('\0').to_string();
@@ -266,6 +275,7 @@ fn network(class: &'static str, friendly_name: &str, raw: &[u8]) -> NetResult<Sh
     let mut item = ShellItem::new(class, friendly_name, raw);
     let (location, description) = crate::utils::network_location(raw)?;
     item.value = location;
+    item.set("Description", Value::opt_text(description.as_deref()));
     item.set_before_line(description.map(|d| format!("Description: {d}\n")));
     Ok(item)
 }
@@ -360,7 +370,9 @@ fn name_or_zip(class: &'static str, raw: &[u8]) -> NetResult<ShellItem> {
     let mut name = unicode_string(raw, 4, raw.len() as i64 - 6)?.replace('\0', "");
     if byte_at(raw, 4)? == 0x10 {
         item.friendly_name = "ZipFileContents".into();
+        item.bag_type = "ZipFileContents";
         let modified = from_file_time(i64_at(raw, 16)?);
+        item.set("ModifiedOn", Value::time(modified));
         let len1 = i64::from(i16_at(raw, 28)?);
         let len2 = i64::from(i16_at(raw, 30)?);
         name = unicode_string(raw, 32, (len1 + len2) * 2)?.replace('\0', "");
@@ -398,6 +410,7 @@ pub fn new_0x5c(raw: &[u8]) -> NetResult<ShellItem> {
     let parts = crate::utils::split_nul_no_empty(&text);
     let (Some(a), Some(b)) = (parts.first(), parts.get(1)) else { return Err(ez_common::net::ARRAY_INDEX.to_string()) };
     item.set_before_line(Some(format!("Description: {a} ({b})\n")));
+    item.set("Description", Value::text(format!("{a} ({b})")));
     Ok(item)
 }
 
@@ -517,6 +530,7 @@ pub fn new_0xc3(raw: &[u8]) -> NetResult<ShellItem> {
         if let Some(d) = parts.get(1) {
             description = Some(d.to_string());
         }
+        item.set("LocationDescription", Value::opt_text(description.as_deref()));
         item.set_before_line(Some(format!("Location description: {}\r\n\n", description.unwrap_or_default())));
         return Ok(item);
     }
@@ -524,6 +538,7 @@ pub fn new_0xc3(raw: &[u8]) -> NetResult<ShellItem> {
     let parts = crate::utils::split_nul_no_empty(&text);
     let mut at = sep + 2;
     item.value = parts.first().ok_or_else(index_error)?.to_string();
+    item.set("LocationDescription", Value::text(parts[1..].join(", ")));
     item.set_before_line(Some(format!("Location description: {}\r\n\n", parts[1..].join(", "))));
     if at == raw.len() as i64 {
         return Ok(item);
@@ -555,8 +570,14 @@ pub fn new_0xe1(raw: &[u8]) -> NetResult<ShellItem> {
     let position = index;
     item.value = unicode_string(raw, 0x14, position - 0x14)?.trim_matches('\0').to_string();
     match byte_at(raw, position + 7)? {
-        1 => item.friendly_name = "Directory".into(),
-        2 => item.friendly_name = "File".into(),
+        1 => {
+            item.friendly_name = "Directory".into();
+            item.bag_type = "Directory";
+        }
+        2 => {
+            item.friendly_name = "File".into();
+            item.bag_type = "File";
+        }
         _ => {}
     }
     Ok(item)
@@ -578,6 +599,7 @@ pub fn new_0x16(raw: &[u8]) -> NetResult<ShellItem> {
 pub fn new_0x1d(raw: &[u8]) -> NetResult<ShellItem> {
     let mut item = ShellItem::new("ShellBag0X1D", "URI", raw);
     let time = from_file_time(i64_at(raw, 0x16)?);
+    item.set("FileTime1", Value::time(time));
     let mut len = 0i64;
     while byte_at(raw, 0x26 + len)? != 0 {
         len += 1;

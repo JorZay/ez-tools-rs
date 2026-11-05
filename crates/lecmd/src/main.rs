@@ -11,7 +11,7 @@ use clap::{ArgAction, CommandFactory, Parser};
 use ez_common::cli::log::Logger;
 use ez_common::cli::{full_path, io_exception, io_message, utc_now};
 use ez_common::dotnet::{n0, number_n, upper_invariant};
-use ez_common::json::service_stack_string;
+use ez_common::json::{jsv_format, jsv_value, service_stack_string};
 use ez_common::{Level, Timestamp};
 use lnk_ez::{ExtraBlock, HAS_ARGUMENTS, HAS_ICON_LOCATION, HAS_LINK_INFO, HAS_NAME, HAS_RELATIVE_PATH, HAS_WORKING_DIR, LnkFile};
 use sha1::{Digest, Sha1};
@@ -376,68 +376,6 @@ impl CsvOut {
     }
 }
 
-/// How ServiceStack writes a string in JSV
-fn jsv_value(value: &str) -> String {
-    if value.contains(['"', ':', ',', '{', '}', '[', ']', '\r', '\n']) {
-        format!("\"{}\"", value.replace('"', "\"\""))
-    } else {
-        value.to_string()
-    }
-}
-
-/// JsvFormatter.Format: braces make new lines even inside quotes; commas don't
-fn jsv_format(text: &str) -> String {
-    fn tab_line(out: &mut String, tabs: i32) {
-        out.push('\n');
-        for _ in 0..tabs {
-            out.push('\t');
-        }
-    }
-    let chars: Vec<char> = text.chars().collect();
-    let mut out = String::with_capacity(text.len() + text.len() / 8);
-    let (mut tabs, mut first_key, mut in_string) = (0i32, true, false);
-    for (i, &current) in chars.iter().enumerate() {
-        let previous = if i > 0 { chars[i - 1] } else { '\0' };
-        let next = chars.get(i + 1).copied().unwrap_or('\0');
-        if current == '{' || current == '[' {
-            if previous == ':' {
-                if next == '}' || next == ']' {
-                    out.push(current);
-                    continue;
-                }
-                tab_line(&mut out, tabs);
-            }
-            out.push(current);
-            tabs += 1;
-            tab_line(&mut out, tabs);
-            first_key = true;
-            continue;
-        }
-        if current == '}' || current == ']' {
-            tabs -= 1;
-            tab_line(&mut out, tabs);
-            out.push(current);
-            first_key = true;
-            continue;
-        }
-        if current == '"' {
-            in_string = !in_string;
-        }
-        if current == ',' && !in_string {
-            out.push(current);
-            tab_line(&mut out, tabs);
-            first_key = true;
-            continue;
-        }
-        out.push(current);
-        if current == ':' && first_key {
-            out.push(' ');
-            first_key = false;
-        }
-    }
-    out
-}
-
 /// Text through XmlWriter's checks: a character XML doesn't allow is an error
 fn xml_writer_text(value: &str) -> Result<String, String> {
     let mut out = String::with_capacity(value.len());
@@ -751,7 +689,7 @@ impl Display<'_> {
                 self.info(&format!("   Icon path: {unicode}"));
                 self.log.blank();
             }
-            ExtraBlock::KnownFolder { id, name } => {
+            ExtraBlock::KnownFolder { id, name, .. } => {
                 self.info(">> Known folder data block");
                 self.info(&format!("   Known folder GUID: {id} ==> {name}"));
                 self.log.blank();
@@ -779,7 +717,7 @@ impl Display<'_> {
                 self.info(&format!("   Layer name: {layer_name}"));
                 self.log.blank();
             }
-            ExtraBlock::SpecialFolder { id } => {
+            ExtraBlock::SpecialFolder { id, .. } => {
                 self.info(">> Special folder data block");
                 self.info(&format!("   Special Folder ID: {id}"));
                 self.log.blank();

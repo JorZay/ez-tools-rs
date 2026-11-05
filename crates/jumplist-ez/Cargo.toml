@@ -1,0 +1,15 @@
+[package]
+name = "jumplist-ez"
+description = "Windows jump lists, as Eric Zimmerman's JumpList reads them"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ez-common = { version = "0.1.0", path = "../ez-common" }
+fancy-regex = "0.20.0"
+lnk-ez = { version = "0.1.0", path = "../lnk-ez" }
+olecf-ez = { version = "0.1.0", path = "../olecf-ez" }
+shellitems-ez = { version = "0.1.0", path = "../shellitems-ez" }

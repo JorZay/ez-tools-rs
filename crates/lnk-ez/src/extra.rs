@@ -1,6 +1,7 @@
 //! The extra data blocks of a link.
 
 use ez_common::Timestamp;
+use ez_common::json::Value;
 use ez_common::net::flags_name;
 use shellitems_ez::ShellItem;
 use shellitems_ez::sheet::PropertyStore;
@@ -41,12 +42,23 @@ pub struct ConsoleData {
     pub history_buffer_size: u32,
     pub history_buffer_count: u32,
     pub history_duplicates_allowed: bool,
+    pub fill_attributes_raw: u16,
+    pub popup_fill_attributes_raw: u16,
+    pub reserved0: i32,
+    pub reserved1: i32,
+    pub font_width: u32,
+    pub font_family: u32,
+    pub font_pitch: u32,
+    pub font_weight: u32,
+    pub cursor_size_raw: u32,
+    pub color_table: Vec<u32>,
 }
 
 /// DamagedDataBlock
 #[derive(Clone, Debug)]
 pub struct DamagedData {
     pub original_signature: u32,
+    pub original_data: Vec<u8>,
     pub error_message: String,
 }
 
@@ -84,6 +96,8 @@ pub struct TrackerData {
     pub is_time_based: bool,
     pub mac_address: String,
     pub creation_time: Timestamp,
+    pub length: u32,
+    pub version: i32,
 }
 
 #[derive(Clone, Debug)]
@@ -93,10 +107,10 @@ pub enum ExtraBlock {
     Darwin { application_identifier_ascii: String, application_identifier_unicode: String, product_code: String, feature_name: String, component_id: String },
     EnvironmentVariable { ascii: String, unicode: String },
     IconEnvironment { ascii: String, unicode: String },
-    KnownFolder { id: String, name: String },
+    KnownFolder { id: String, name: String, offset: u32 },
     PropertyStore(PropertyStore),
     Shim { layer_name: String },
-    SpecialFolder { id: u32 },
+    SpecialFolder { id: u32, offset: u32 },
     Tracker(TrackerData),
     VistaAndAboveIdList { target_ids: Vec<ShellItem>, parse_errors: Vec<String> },
     Damaged(DamagedData),
@@ -187,6 +201,8 @@ fn tracker(raw: &[u8], code_page: i32) -> LnkResult<ExtraBlock> {
         is_time_based,
         mac_address,
         creation_time: Timestamp(ticks),
+        length: u32::from_le_bytes(raw[8..12].try_into().unwrap()),
+        version: i32::from_le_bytes(raw[12..16].try_into().unwrap()),
     }))
 }
 
@@ -216,6 +232,16 @@ fn console(raw: &[u8]) -> LnkResult<ExtraBlock> {
         history_buffer_size: u32_at(128),
         history_buffer_count: u32_at(132),
         history_duplicates_allowed: u32_at(136) == 0,
+        fill_attributes_raw: u16_at(8),
+        popup_fill_attributes_raw: u16_at(10),
+        reserved0: u32_at(24) as i32,
+        reserved1: u32_at(28) as i32,
+        font_width: u32::from(u16_at(32)),
+        font_family: u32_at(36) & 0xf0,
+        font_pitch: u32_at(36) & 0x0f,
+        font_weight: u32_at(40),
+        cursor_size_raw: cursor,
+        color_table: (0..16).map(|i| u32_at(140 + i * 4)).collect(),
     }))
 }
 
@@ -251,7 +277,7 @@ impl ExtraBlock {
                 0xa000000b => {
                     require_size(block, 0x1c, "KnownFolderDataBlock")?;
                     let id = guid_text(&block[8..24]).map_err(plain_error)?;
-                    ExtraBlock::KnownFolder { name: guid_name(&id), id }
+                    ExtraBlock::KnownFolder { name: guid_name(&id), id, offset: u32_at(24) }
                 }
                 0xa0000009 => {
                     require_size(block, 0x0c, "PropertyStoreDataBlock")?;
@@ -263,7 +289,7 @@ impl ExtraBlock {
                 }
                 0xa0000005 => {
                     require_size(block, 0x10, "SpecialFolderDataBlock")?;
-                    ExtraBlock::SpecialFolder { id: u32_at(8) }
+                    ExtraBlock::SpecialFolder { id: u32_at(8), offset: u32_at(12) }
                 }
                 0xa000000c => {
                     require_size(block, 0x0a, "VistaAndAboveIDListDataBlock")?;
@@ -278,7 +304,7 @@ impl ExtraBlock {
             Ok(b) => b,
             Err(e) => {
                 let original_signature = if block.len() >= 8 { u32::from_le_bytes(block[4..8].try_into().unwrap()) } else { 0 };
-                ExtraBlock::Damaged(DamagedData { original_signature, error_message: e.message })
+                ExtraBlock::Damaged(DamagedData { original_signature, original_data: block.to_vec(), error_message: e.message })
             }
         }
     }
@@ -301,6 +327,82 @@ impl ExtraBlock {
         }
     }
 
+    /// The properties ServiceStack serializes, with the type name it adds for an ExtraDataBase
+    pub fn to_value(&self) -> Value {
+        let text = |s: &String| Value::text(s.as_str());
+        let mut list = vec![("__type", Value::text(format!("Lnk.ExtraData.{}, Lnk", self.class_name())))];
+        list.extend::<Vec<(&'static str, Value)>>(match self {
+            ExtraBlock::Console(c) => {
+                let family = match c.font_family {
+                    0x00 => "Dontcare".to_string(),
+                    0x10 => "Roman".to_string(),
+                    0x20 => "Swiss".to_string(),
+                    0x30 => "Modern".to_string(),
+                    0x40 => "Script".to_string(),
+                    0x50 => "Decorative".to_string(),
+                    other => other.to_string(),
+                };
+                vec![
+                    ("FillAttributes", Value::number(c.fill_attributes_raw)),
+                    ("PopupFillAttributes", Value::number(c.popup_fill_attributes_raw)),
+                    ("ScreenWidthBufferSize", Value::number(c.screen_width_buffer_size)),
+                    ("ScreenHeightBufferSize", Value::number(c.screen_height_buffer_size)),
+                    ("WindowWidth", Value::number(c.window_width)),
+                    ("WindowHeight", Value::number(c.window_height)),
+                    ("WindowOriginX", Value::number(c.window_origin_x)),
+                    ("WindowOriginY", Value::number(c.window_origin_y)),
+                    ("Reserved0", Value::number(c.reserved0)),
+                    ("Reserved1", Value::number(c.reserved1)),
+                    ("FontSize", Value::number(c.font_size)),
+                    ("FontWidth", Value::number(c.font_width)),
+                    ("FontFamily", Value::Text(family)),
+                    ("FontPitch", Value::number(c.font_pitch)),
+                    ("FontWeight", Value::number(c.font_weight)),
+                    ("IsBold", Value::Bool(c.is_bold)),
+                    ("FaceName", text(&c.face_name)),
+                    ("CursorSize", Value::text(c.cursor_size)),
+                    ("CursorSizeRaw", Value::number(c.cursor_size_raw)),
+                    ("IsFullScreen", Value::Bool(c.is_full_screen)),
+                    ("IsQuickEdit", Value::Bool(c.is_quick_edit)),
+                    ("IsInsertMode", Value::Bool(c.is_insert_mode)),
+                    ("IsAutoPositioned", Value::Bool(c.is_auto_positioned)),
+                    ("HistoryBufferSize", Value::number(c.history_buffer_size)),
+                    ("HistoryBufferCount", Value::number(c.history_buffer_count)),
+                    ("HistoryDuplicatesAllowed", Value::Bool(c.history_duplicates_allowed)),
+                    ("ColorTable", Value::List(c.color_table.iter().map(Value::number).collect())),
+                ]
+            }
+            ExtraBlock::ConsoleFe { code_page } => vec![("CodePage", Value::number(code_page))],
+            ExtraBlock::Darwin { application_identifier_ascii, application_identifier_unicode, product_code, feature_name, component_id } => vec![
+                ("FeatureName", text(feature_name)),
+                ("ComponentId", text(component_id)),
+                ("ProductCode", text(product_code)),
+                ("ApplicationIdentifierAscii", text(application_identifier_ascii)),
+                ("ApplicationIdentifierUnicode", text(application_identifier_unicode)),
+            ],
+            ExtraBlock::EnvironmentVariable { ascii, unicode } => vec![("EnvironmentVariablesAscii", text(ascii)), ("EnvironmentVariablesUnicode", text(unicode))],
+            ExtraBlock::IconEnvironment { ascii, unicode } => vec![("IconPathAscii", text(ascii)), ("IconPathUni", text(unicode))],
+            ExtraBlock::KnownFolder { id, name, offset } => vec![("Offset", Value::number(offset)), ("KnownFolderId", Value::guid(id)), ("KnownFolderName", text(name))],
+            ExtraBlock::PropertyStore(store) => vec![("PropertyStore", store.to_value())],
+            ExtraBlock::Shim { layer_name } => vec![("LayerName", text(layer_name))],
+            ExtraBlock::SpecialFolder { id, offset } => vec![("SpecialFolderId", Value::number(id)), ("Offset", Value::number(offset))],
+            ExtraBlock::Tracker(t) => vec![
+                ("CreationTime", Value::time(t.creation_time)),
+                ("Length", Value::number(t.length)),
+                ("Version", Value::number(t.version)),
+                ("MachineId", text(&t.machine_id)),
+                ("VolumeDroid", Value::guid(&t.volume_droid)),
+                ("FileDroid", Value::guid(&t.file_droid)),
+                ("VolumeDroidBirth", Value::guid(&t.volume_droid_birth)),
+                ("FileDroidBirth", Value::guid(&t.file_droid_birth)),
+                ("MacAddress", text(&t.mac_address)),
+            ],
+            ExtraBlock::VistaAndAboveIdList { target_ids, parse_errors } => vec![("ParseErrors", Value::strings(parse_errors)), ("TargetIDs", Value::List(target_ids.iter().map(ShellItem::to_value).collect()))],
+            ExtraBlock::Damaged(d) => vec![("OriginalSignature", Value::text(d.original_signature_text())), ("OriginalData", Value::bytes(&d.original_data)), ("ErrorMessage", text(&d.error_message))],
+        });
+        Value::object(list)
+    }
+
     /// ToString()
     pub fn to_text(&self) -> String {
         let yes = |b: bool| if b { "True" } else { "False" };
@@ -316,7 +418,7 @@ impl ExtraBlock {
             }
             ExtraBlock::EnvironmentVariable { ascii, unicode } => format!("Environment variable data block\r\nEnvironment variables Ascii: {ascii}\r\nEnvironment variables unicode: {unicode}"),
             ExtraBlock::IconEnvironment { ascii, unicode } => format!("Icon environment data block\r\nIcon path: {ascii}\r\nIcon path (Unicode): {unicode}"),
-            ExtraBlock::KnownFolder { id, name } => format!("Known folder data block\r\nKnown folder GUID: {id} ({name})"),
+            ExtraBlock::KnownFolder { id, name, .. } => format!("Known folder data block\r\nKnown folder GUID: {id} ({name})"),
             ExtraBlock::PropertyStore(store) => {
                 let mut s = String::new();
                 if !store.sheets.is_empty() {
@@ -340,7 +442,7 @@ impl ExtraBlock {
                 s
             }
             ExtraBlock::Shim { layer_name } => format!("Shimcache data block\r\nLayerName: {layer_name}"),
-            ExtraBlock::SpecialFolder { id } => format!("Special folder data block\r\nSpecialFolderID: {id}"),
+            ExtraBlock::SpecialFolder { id, .. } => format!("Special folder data block\r\nSpecialFolderID: {id}"),
             ExtraBlock::Tracker(t) => format!(
                 "Tracker database block\r\nMachine ID: {}\r\nMac Address: {}\r\nCreation: {}\r\nVolume Droid: {}\r\nVolume Droid Birth: {}\r\nFile Droid: {}\r\nFile Droid birth: {}",
                 t.machine_id, t.mac_address, t.creation_time.format("M/d/yyyy h:mm:ss\u{202f}tt K"), t.volume_droid, t.volume_droid_birth, t.file_droid, t.file_droid_birth

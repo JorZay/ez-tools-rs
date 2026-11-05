@@ -3,6 +3,8 @@
 use ez_common::dotnet::{dotnet_f32, dotnet_f64};
 use ez_common::net::{NetResult, byte_at, copy, hex, i16_at, i32_at, i64_at, u16_at, u32_at, u64_at, unicode_string};
 
+use ez_common::json::{Value, base64};
+
 use crate::items::{self, ShellItem};
 use crate::utils::{array_copy, description_from_guid_and_key, file_time_invariant, guid_name, guid_text};
 
@@ -300,19 +302,6 @@ fn vector_lines(value: &[u8]) -> NetResult<Vec<Lazy>> {
     Ok(lines)
 }
 
-fn base64(d: &[u8]) -> String {
-    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::new();
-    for chunk in d.chunks(3) {
-        let n = (u32::from(chunk[0]) << 16) | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8) | u32::from(*chunk.get(2).unwrap_or(&0));
-        out.push(TABLE[(n >> 18) as usize & 63] as char);
-        out.push(TABLE[(n >> 12) as usize & 63] as char);
-        out.push(if chunk.len() > 1 { TABLE[(n >> 6) as usize & 63] as char } else { '=' });
-        out.push(if chunk.len() > 2 { TABLE[n as usize & 63] as char } else { '=' });
-    }
-    out
-}
-
 impl PropertySheet {
     pub fn read(contents: &[u8]) -> NetResult<PropertySheet> {
         let size = i32_at(contents, 0)?;
@@ -475,6 +464,18 @@ impl PropertySheet {
         out
     }
 
+    /// The properties ServiceStack serializes
+    pub fn to_value(&self) -> Value {
+        Value::object(vec![
+            ("Size", Value::number(self.size)),
+            ("Version", Value::text(self.version.as_str())),
+            ("GUID", Value::text(self.guid.as_str())),
+            ("PropertyNames", Value::Object(self.property_names.iter().map(|(k, v)| (k.clone().into(), Value::text(v.as_str()))).collect())),
+            ("ExtraData", Value::text(self.extra_data())),
+            ("PropertySheetType", Value::text(if self.sheet_type == SheetType::Named { "Named" } else { "Numeric" })),
+        ])
+    }
+
     /// ToString()
     pub fn to_text(&self) -> String {
         let pairs: Vec<String> = self
@@ -536,6 +537,11 @@ impl PropertyStore {
             }
         }
         Ok(store)
+    }
+
+    /// The properties ServiceStack serializes
+    pub fn to_value(&self) -> Value {
+        Value::object(vec![("Sheets", Value::List(self.sheets.iter().map(PropertySheet::to_value).collect())), ("ParseErrors", Value::strings(&self.parse_errors))])
     }
 
     /// ToString()

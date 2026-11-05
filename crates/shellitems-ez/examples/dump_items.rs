@@ -27,10 +27,27 @@ fn base64(text: &str) -> Vec<u8> {
     out
 }
 
+/// Each "InternalId":"..." as ID
+fn id_out(text: &str) -> String {
+    const KEY: &str = "\"InternalId\":\"";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find(KEY) {
+        out.push_str(&rest[..i]);
+        out.push_str("ID");
+        rest = &rest[i + KEY.len() + 37..];
+    }
+    out.push_str(rest);
+    out
+}
+
 fn main() {
     let path = std::env::args().nth(1).expect("samples file");
     // `dump_items <file> nulls`: which items leave Value null
-    let nulls = std::env::args().nth(2).is_some();
+    let mode = std::env::args().nth(2).unwrap_or_default();
+    let nulls = mode == "nulls";
+    // `dump_items <file> json`: each item as JLECmd's --json writes it, its random id taken out
+    let json = mode == "json";
     let mut number = 0;
     for l in std::fs::read_to_string(path).unwrap().lines() {
         number += 1;
@@ -38,6 +55,16 @@ fn main() {
             continue;
         }
         let raw = base64(l.split('\t').nth(1).unwrap());
+        if json {
+            match create_with_code_page(&raw, 1252) {
+                Ok(b) => {
+                    let text = ez_common::json::Value::List(vec![b.to_value()]).to_json();
+                    println!("{number}\t{}", id_out(&text).replace('\n', "\\n").replace('\r', "\\r"));
+                }
+                Err(e) => println!("{number}\tERROR\t{}", line(&e)),
+            }
+            continue;
+        }
         match create_with_code_page(&raw, 1252) {
             Ok(b) if nulls => println!("{number}\t{}\t{}", b.class, if b.value_is_null { "null" } else if b.value.is_empty() { "empty" } else { "text" }),
             Err(_) if nulls => println!("{number}\tERROR"),

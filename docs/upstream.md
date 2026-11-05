@@ -12,6 +12,9 @@ port is brought up to date.
 | `appcompatcacheparser`, `appcompatcache-ez` | EricZimmerman/AppCompatCacheParser | `694c0bba98b7a2edc78f8a8fd6975bf94d37cf8c` | 2026-10-25 | 2026.10.1 | Exact |
 | `sqlecmd`, `sqlmap-ez`, `maps-sqlecmd/` | EricZimmerman/SQLECmd | `c67634af503bd53777689998f1d9e3c0b4e2fdff` | 2026-10-25 | 2026.10.3 (System.Data.SQLite 1.0.119, SQLite 3.46.1) | Exact |
 | `lecmd` | EricZimmerman/LECmd | `b5bbf29e4b58384fe7bd4384cb4851960c31dc83` | | 2026.10.4 | Exact |
+| `jlecmd` | EricZimmerman/JLECmd | `256962fcb3690d779faba11726dd63ee500ae2a7` | 2026-10-29 | 2026.10.6 | Exact |
+| `jumplist-ez` | EricZimmerman/JumpList | `c125c8e` (tag 2026.10.10) | 2026-10-29 | 2026.10.10 | Exact |
+| `olecf-ez` | EricZimmerman/OleCf | `afd5ee9` (tag 2026.10.1, not HEAD) | 2026-10-15 | 2026.10.1 | Exact |
 | `lnk-ez` | EricZimmerman/Lnk | `dab1c8ab9c1c18d2cf89a4938ab95794d17d3a44` | | 2026.10.11 | Exact |
 | `shellitems-ez` | EricZimmerman/ExtensionBlocks | `897bbe3` (not HEAD) | | 2026.10.9 | Exact |
 | `recmd` | EricZimmerman/RECmd | `8d1955910964209500b6f74f169e3e52554838d7` | | 2026.10.3 | Exact |

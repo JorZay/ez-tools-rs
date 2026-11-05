@@ -768,6 +768,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "jlecmd"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "ez-common",
+ "jumplist-ez",
+ "lnk-ez",
+ "olecf-ez",
+ "shellitems-ez",
+]
+
+[[package]]
 name = "js-sys"
 version = "0.3.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -776,6 +788,17 @@ dependencies = [
  "cfg-if",
  "futures-util",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "jumplist-ez"
+version = "0.1.0"
+dependencies = [
+ "ez-common",
+ "fancy-regex",
+ "lnk-ez",
+ "olecf-ez",
+ "shellitems-ez",
 ]
 
 [[package]]
@@ -904,6 +927,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "olecf-ez"
+version = "0.1.0"
+dependencies = [
+ "ez-common",
 ]
 
 [[package]]

@@ -1,6 +1,7 @@
 //! Shell item classes found by signature or layout, and the remaining types.
 
 use ez_common::Timestamp;
+use ez_common::json::Value;
 use ez_common::net::{NetResult, byte_at, copy, i16_at, i32_at, i64_at, u16_at, u32_at, u64_at, unicode_string};
 
 use super::*;
@@ -18,6 +19,7 @@ fn default_time(t: Timestamp) -> String {
 
 fn user_profile(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
     item.friendly_name = "User profile".to_string();
+    item.bag_type = "User";
     let last_access = if raw.len() >= 14 { crate::utils::dos_time(skip_take(raw, raw.len() - 14, 4))? } else { crate::utils::dos_time(skip_take(raw, 0, 4))? };
     item.last_access = last_access;
     let text = crate::utils::unicode(skip(raw, 10));
@@ -29,6 +31,7 @@ fn user_profile(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
 
 fn guid_0x2e(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
     item.friendly_name = "Root folder: GUID".to_string();
+    item.bag_type = "Guid";
     let folder = guid_name(&guid_text(array_copy(raw, 4, 16)?)?);
     item.value = folder;
     let mut index = 20i64;
@@ -58,6 +61,7 @@ fn guid_0x2e(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
 
 fn view_0x2e(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
     item.friendly_name = "Users property view".to_string();
+    item.bag_type = "User";
     let mut index = 10i64;
     let list_size = i16_at(raw, index)?;
     index += 2;
@@ -131,6 +135,8 @@ pub fn new_0x2e(raw: &[u8]) -> NetResult<ShellItem> {
         item.value = unicode_string(raw, 0x116, end - 0x116)?.trim_matches('\0').to_string();
         guid_text(copy(raw, end, 16)?)?;
         let category = guid_name(&guid_text(copy(raw, end + 16, 16)?)?);
+        item.set("Category", Value::text(category.as_str()));
+        item.set("DevicePath", Value::text(device_path.as_str()));
         item.set_before_line(Some(format!("Category: {category}\n\nDevice Path: {device_path}\n\n")));
         return Ok(item);
     }
@@ -166,6 +172,7 @@ pub fn new_0x50(raw: &[u8]) -> NetResult<ShellItem> {
     let text = unicode_string(buffer, 8, buffer.len() as i64 - 8)?;
     item.value = text.split('\0').next().unwrap_or_default().to_string();
     let time = from_file_time(i64_at(raw, index + i64::from(size))?);
+    item.set("FileTime1", Value::time(time));
     item.set_before_line(Some(format!("Timestamp: {}\n\n", default_time(time))));
     Ok(item)
 }
@@ -173,7 +180,9 @@ pub fn new_0x50(raw: &[u8]) -> NetResult<ShellItem> {
 /// The ModifiedOn line and the zip name of 0x52, 0x61, 0x69
 fn zip_name(item: &mut ShellItem, raw: &[u8]) -> NetResult<Timestamp> {
     item.friendly_name = "ZipFileContents".to_string();
+    item.bag_type = "ZipFileContents";
     let modified = from_file_time(i64_at(raw, 16)?);
+    item.set("ModifiedOn", Value::time(modified));
     let len1 = i64::from(i16_at(raw, 28)?);
     let len2 = i64::from(i16_at(raw, 30)?);
     item.value = unicode_string(raw, 32, (len1 + len2) * 2)?.replace('\0', "");
@@ -203,11 +212,13 @@ pub fn new_0x61(raw: &[u8]) -> NetResult<ShellItem> {
     if size == 0 {
         let uri = unicode_string(raw, 8, raw.len() as i64 - 8)?.trim_matches('\0').to_string();
         item.value = uri.split('\0').next().unwrap_or_default().to_string();
+        item.set("URI", Value::text(uri.as_str()));
         item.set_before_line(Some(format!("URI: {uri}\n\n")));
         return Ok(item);
     }
     let mut index = 14i64;
     let connect = from_file_time(u64_at(raw, index)? as i64);
+    item.set("FileTime1", Value::time(connect));
     index += 8 + 4 + 12 + 4;
     let mut length = i64::from(u32_at(raw, index)? as i32);
     index += 4;
@@ -218,6 +229,7 @@ pub fn new_0x61(raw: &[u8]) -> NetResult<ShellItem> {
     let mut user = String::new();
     if u32_at(raw, index - 4)? > 0 {
         user = ansi_at(raw, index, length)?.replace('\0', "");
+        item.set("UserName", Value::text(user.as_str()));
         index += length;
     }
     length = i64::from(u32_at(raw, index)? as i32);
@@ -231,6 +243,7 @@ pub fn new_0x61(raw: &[u8]) -> NetResult<ShellItem> {
         len += 1;
     }
     let uri = ansi_at(raw, index, len)?;
+    item.set("URI", Value::text(uri.as_str()));
     let mut before = format!("URI: {uri}\n\nConnect time: {}\n\n", time_text(connect));
     if !user.is_empty() {
         before.push_str(&format!("Username: {user}\n\n"));
@@ -362,6 +375,12 @@ pub fn new_archive_contents(raw: &[u8]) -> NetResult<ShellItem> {
     let path = unicode_string(raw, 0x20, (name_length + i64::from(parent_length)) * 2)?;
     let units: Vec<u16> = path.encode_utf16().collect();
     item.value = String::from_utf16_lossy(&units[usize::from(parent_length).min(units.len())..]);
+    item.set("FileAttributes", Value::number(attributes));
+    item.set("FileSize", Value::number(size));
+    if modified > 0 {
+        item.set("ModifiedOn", Value::time(from_file_time(modified)));
+    }
+    item.set("ArchivePath", Value::text(path.as_str()));
     let mut before = format!("Archive path: {path}\nFile attributes: 0x{attributes:X}\n");
     if size > 0 {
         before.push_str(&format!("File size: {}\n", ez_common::dotnet::n0(size)));
@@ -424,9 +443,11 @@ pub fn new_cd_burn(raw: &[u8]) -> NetResult<ShellItem> {
             let buffer = copy(bytes, at, i64::from(block_size))?;
             u32_at(bytes, at + 4)?;
             let block = crate::blocks::from_bytes_or_error(buffer);
-            if let crate::blocks::BlockKind::Beef0004 { long_name, .. } = &block.kind {
+            if let crate::blocks::BlockKind::Beef0004 { long_name, created, last_access, .. } = &block.kind {
                 item.value = long_name.clone();
                 item.value_is_null = false;
+                item.set("CreatedOnTime", Value::opt_time(*created));
+                item.last_access = *last_access;
             }
             item.extension_blocks.push(block);
             at += i64::from(block_size);
@@ -444,6 +465,7 @@ pub fn new_cd_burn(raw: &[u8]) -> NetResult<ShellItem> {
     }
     before.push('\n');
     item.set_before_line(Some(before));
+    item.set("FileSize", Value::number(size));
     item.short_name = Some(short);
     item.last_modification = modified;
     Ok(item)
@@ -462,6 +484,7 @@ pub fn new_cfsf(raw: &[u8]) -> NetResult<ShellItem> {
     byte_at(raw, index)?;
     index += 2;
     let size = u32_at(raw, index)? as i32;
+    item.set("FileSize", Value::number(size));
     index += 4;
     let modified = crate::utils::dos_time(array_copy(raw, index, 4)?)?;
     item.last_modification = modified;
@@ -531,18 +554,26 @@ fn positive_file_time(raw: &[u8], offset: i64) -> NetResult<Option<Timestamp>> {
 pub fn new_document_drive(raw: &[u8]) -> NetResult<ShellItem> {
     let folder = byte_at(raw, 2)? == 0xff;
     let mut item = ShellItem::new("ShellBagDocumentDrive", if folder { "Document drive folder" } else { "Document drive file" }, raw);
+    item.bag_type = if folder { "Directory" } else { "File" };
     let mut before = String::new();
     let time_offset = if folder {
-        before.push_str(&format!("Item ID: {}\nParent ID: {}\n\n", terminated_string(raw, 0x79)?, terminated_string(raw, 0xa5)?));
+        let (id, parent) = (terminated_string(raw, 0x79)?, terminated_string(raw, 0xa5)?);
+        before.push_str(&format!("Item ID: {id}\nParent ID: {parent}\n\n"));
+        item.set("ItemId", Value::text(id));
+        item.set("ParentId", Value::text(parent));
         item.value = terminated_string(raw, 0xd2)?;
         0x13
     } else {
         item.value = terminated_string(raw, 0x29)?;
         0x09
     };
-    before.push_str(&time_line("Created On", positive_file_time(raw, time_offset)?));
-    before.push_str(&time_line("Modified On", positive_file_time(raw, time_offset + 8)?));
-    before.push_str(&time_line("Accessed On", positive_file_time(raw, time_offset + 16)?));
+    let (created, modified, accessed) = (positive_file_time(raw, time_offset)?, positive_file_time(raw, time_offset + 8)?, positive_file_time(raw, time_offset + 16)?);
+    item.set("CreatedOn", Value::opt_time(created));
+    item.set("ModifiedOn", Value::opt_time(modified));
+    item.set("AccessedOn", Value::opt_time(accessed));
+    before.push_str(&time_line("Created On", created));
+    before.push_str(&time_line("Modified On", modified));
+    before.push_str(&time_line("Accessed On", accessed));
     before.push('\n');
     item.set_before_line(Some(before));
     item.after = "\n".to_string();
@@ -599,6 +630,13 @@ pub fn new_find_data(raw: &[u8]) -> NetResult<ShellItem> {
     let second_length = i64::from(u16_at(raw, 0x16)?);
     item.value = unicode_string(raw, i64::from(u16_at(raw, 0x18)?), name_length * 2)?;
     let second = unicode_string(raw, i64::from(u16_at(raw, 0x1a)?), second_length * 2)?;
+    item.bag_type = if attributes & 0x10 != 0 { "Directory" } else { "File" };
+    item.set("FileAttributes", Value::number(attributes));
+    item.set("FileSize", Value::number(size));
+    item.set("CreatedOn", Value::opt_time(created));
+    item.set("AccessedOn", Value::opt_time(accessed));
+    item.set("ModifiedOn", Value::opt_time(modified));
+    item.set("SecondName", Value::text(second.as_str()));
     let mut before = String::new();
     if second != item.value {
         before.push_str(&format!("Second name: {second}\n"));
@@ -625,7 +663,7 @@ pub fn new_mtp_device(raw: &[u8]) -> NetResult<ShellItem> {
     index += 4;
     let path_size = twice(i32_at(raw, index)?);
     index += 4 + 2;
-    unicode_string(raw, index, name_size)?;
+    item.set("DeviceName", Value::text(unicode_string(raw, index, name_size)?.trim_matches('\0')));
     index += name_size;
     let path = unicode_string(raw, index, path_size)?.trim_matches('\0').to_string();
     index += path_size + 4;
@@ -648,6 +686,13 @@ pub fn new_mtp_device(raw: &[u8]) -> NetResult<ShellItem> {
     index += 2;
     let delegate_folder = guid_here(&mut index)?;
     let portable = guid_name(&guid_here(&mut index)?);
+    item.set("ClassId", Value::text(class_id.as_str()));
+    item.set("DevicePath", Value::text(path.as_str()));
+    item.set("DevicePropsGuid", Value::guid(&props));
+    item.set("FunctionalObjectGuid", Value::guid(&functional_object));
+    item.set("FunctionalCategoryGuid", Value::guid(&functional_category));
+    item.set("DelegateFolderGuid", Value::guid(&delegate_folder));
+    item.set("PortableDeviceId", Value::text(portable.as_str()));
     item.set_before_line(Some(format!(
         "Class Id: {class_id}\nDevice path: {path}\nDevice properties GUID: {props}\nFunctional object GUID: {functional_object}\nFunctional category GUID: {functional_category}\nDelegate folder GUID: {delegate_folder}\nPortable device Id: {portable}\n\n"
     )));
@@ -734,6 +779,11 @@ fn property_line(guid: &str, id: i32, kind: i32, bytes: &[u8]) -> String {
     format!("{description}: {text}\n")
 }
 
+/// PropertyArray's serialized properties
+fn property_array(guid: &str, id: i32, kind: i32, bytes: &[u8]) -> Value {
+    Value::object(vec![("FormatClassId", Value::guid(guid)), ("PropertyId", Value::number(id)), ("PropertyType", Value::text(ole_type_name(kind))), ("PropertyBytes", Value::bytes(bytes))])
+}
+
 /// The fixed size types of an MTP item's properties
 fn fixed_size(kind: i32) -> Option<i64> {
     Some(match kind {
@@ -770,12 +820,15 @@ pub fn new_mtp_folder(raw: &[u8]) -> NetResult<ShellItem> {
     unicode_string(raw, index, len3)?;
     index += len3;
     item.value = name2.clone();
+    item.set("FolderName", Value::text(name.as_str()));
+    item.set("FolderName2", Value::text(name2.as_str()));
     index += 4;
     guid_text(copy(raw, index, 16)?)?;
     index += 16;
     i32_at(raw, index)?;
     index += 4;
     let mut lines = String::new();
+    let mut arrays = Vec::new();
     while index < raw.len() as i64 {
         if index + 4 >= raw.len() as i64 {
             break;
@@ -812,25 +865,30 @@ pub fn new_mtp_folder(raw: &[u8]) -> NetResult<ShellItem> {
                     data.extend_from_slice(copy(raw, index, i64::from(length))?);
                     index += i64::from(count) * 0x10;
                 }
+                arrays.push(property_array(&guid, id, kind, &data));
                 lines.push_str(&property_line(&guid, id, kind, &data));
             }
             0x1f => {
                 let size = i64::from(i32_at(raw, index)?);
                 index += 4;
+                arrays.push(property_array(&guid, id, kind, copy(raw, index, size)?));
                 lines.push_str(&property_line(&guid, id, kind, copy(raw, index, size)?));
                 index += size;
             }
             0x11 => {
+                arrays.push(property_array(&guid, id, kind, copy(raw, index, 1)?));
                 lines.push_str(&property_line(&guid, id, kind, copy(raw, index, 1)?));
                 index += 1;
             }
             other => {
                 let Some(size) = fixed_size(other) else { return Err(format!("unhandled for {}", ole_type_name(other))) };
+                arrays.push(property_array(&guid, id, kind, copy(raw, index, size)?));
                 lines.push_str(&property_line(&guid, id, kind, copy(raw, index, size)?));
                 index += size;
             }
         }
     }
+    item.set("PropertyArrays", Value::List(arrays));
     let mut before = format!("Folder name: {name}\n");
     if name2 != name {
         before.push_str(&format!("Folder name 2: {name2}\n"));
@@ -863,12 +921,17 @@ pub fn new_mtp_storage(raw: &[u8]) -> NetResult<ShellItem> {
     let handler_size = i64::from(handlers.wrapping_mul(78));
     let handler_text = unicode_string(raw, index, handler_size)?;
     let handler_list = crate::utils::split_nul_no_empty(&handler_text).join(",");
+    item.set("StorageName", Value::text(name.as_str()));
+    item.set("PersistentUniqueId", Value::text(unique.as_str()));
+    item.set("FileSystemName", Value::text(file_system.as_str()));
+    item.set("WpdEventHandlers", Value::List(crate::utils::split_nul_no_empty(&handler_text).into_iter().map(Value::text).collect()));
     index += handler_size + 4;
     guid_text(copy(raw, index, 16)?)?;
     index += 16;
     i32_at(raw, index)?;
     index += 4;
     let mut lines = String::new();
+    let mut arrays = Vec::new();
     let mut serial = String::new();
     while index < raw.len() as i64 {
         if index + 4 >= raw.len() as i64 {
@@ -893,6 +956,7 @@ pub fn new_mtp_storage(raw: &[u8]) -> NetResult<ShellItem> {
                 if count > 0 {
                     index += i64::from(count.wrapping_mul(0x10));
                 }
+                arrays.push(property_array(&guid, id, kind, &[]));
                 lines.push_str(&property_line(&guid, id, kind, &[]));
             }
             0x1f => {
@@ -900,22 +964,27 @@ pub fn new_mtp_storage(raw: &[u8]) -> NetResult<ShellItem> {
                 index += 4;
                 let bytes = copy(raw, index, size)?;
                 index += size;
+                arrays.push(property_array(&guid, id, kind, bytes));
                 lines.push_str(&property_line(&guid, id, kind, bytes));
                 if guid == "01a3057a-74d6-4e80-bea7-dc4c212ce50a" && id == 8 {
                     serial = crate::utils::unicode(bytes).trim_matches('\0').to_string();
+                    item.set("StorageSerialNumber", Value::text(serial.as_str()));
                 }
             }
             0x03 => {
+                arrays.push(property_array(&guid, id, kind, copy(raw, index, 4)?));
                 lines.push_str(&property_line(&guid, id, kind, copy(raw, index, 4)?));
                 index += 4;
             }
             other => {
                 let Some(size) = fixed_size(other) else { return Err(format!("unhandled for {}", ole_type_name(other))) };
+                arrays.push(property_array(&guid, id, kind, copy(raw, index, size)?));
                 lines.push_str(&property_line(&guid, id, kind, copy(raw, index, size)?));
                 index += size;
             }
         }
     }
+    item.set("PropertyArrays", Value::List(arrays));
     item.set_before_line(Some(format!(
         "Storage name: {name}\nStorage serial number: {serial}\n\nFile system name: {file_system}\n\nPersistent Unique Id: {unique}\n\nWPD Event Handlers {handler_list}\n\nProperty arrays (Description: Value)\n{lines}\n"
     )));
@@ -923,47 +992,49 @@ pub fn new_mtp_storage(raw: &[u8]) -> NetResult<ShellItem> {
 }
 
 /// DateTimeOffset.TryParse, for the dates zip contents have: en-US's month first form
-fn parses_as_date(text: &str) -> bool {
+fn parse_date(text: &str) -> Option<Timestamp> {
     let mut parts = text.split_whitespace();
-    let (Some(date), time) = (parts.next(), parts.next()) else { return false };
+    let (date, time) = (parts.next()?, parts.next());
     if parts.next().is_some() {
-        return Timestamp::parse(text).is_some();
+        return Timestamp::parse(text);
     }
     let numbers: Vec<&str> = date.split('/').collect();
     if numbers.len() == 2 && time.is_none() {
         // month and day, of this year
-        let (Ok(m), Ok(d)) = (numbers[0].parse::<u32>(), numbers[1].parse::<u32>()) else { return false };
-        return Timestamp::from_parts(2024, m, d, 0, 0, 0, 0).is_some();
+        let (m, d) = (numbers[0].parse::<u32>().ok()?, numbers[1].parse::<u32>().ok()?);
+        return Timestamp::from_parts(Timestamp::now().parts().year, m, d, 0, 0, 0, 0);
     }
     if numbers.len() == 3 {
-        let (Ok(m), Ok(d), Ok(y)) = (numbers[0].parse::<u32>(), numbers[1].parse::<u32>(), numbers[2].parse::<i32>()) else { return false };
+        let (m, d, y) = (numbers[0].parse::<u32>().ok()?, numbers[1].parse::<u32>().ok()?, numbers[2].parse::<i32>().ok()?);
         let (mut hour, mut minute, mut second) = (0, 0, 0);
         if let Some(t) = time {
             let fields: Vec<&str> = t.split(':').collect();
             if fields.len() < 2 || fields.len() > 3 {
-                return false;
+                return None;
             }
-            let (Ok(h), Ok(n)) = (fields[0].parse(), fields[1].parse()) else { return false };
-            hour = h;
-            minute = n;
+            hour = fields[0].parse().ok()?;
+            minute = fields[1].parse().ok()?;
             if let Some(s) = fields.get(2) {
-                let Ok(s) = s.parse() else { return false };
-                second = s;
+                second = s.parse().ok()?;
             }
         }
-        return Timestamp::from_parts(y, m, d, hour, minute, second, 0).is_some();
+        return Timestamp::from_parts(y, m, d, hour, minute, second, 0);
     }
-    Timestamp::parse(text).is_some()
+    Timestamp::parse(text)
 }
 
 pub fn new_zip_contents(raw: &[u8]) -> NetResult<ShellItem> {
     let mut item = ShellItem::new("ShellBagZipContents", "Zip file contents", raw);
     let first = crate::utils::unicode(skip_take(raw, 0x24, 40));
     let mut date_text = first.split('\0').next().unwrap_or_default().to_string();
-    if !parses_as_date(&date_text) {
+    let mut date = parse_date(&date_text);
+    if date.is_none() {
         let second = crate::utils::unicode(skip_take(raw, 0x18, 40));
         date_text = second.split('\0').next().unwrap_or_default().to_string();
+        date = parse_date(&date_text);
     }
+    item.last_access = date;
+    item.set("LastAccessTimeString", Value::text(date_text.as_str()));
     let mut index = if byte_at(raw, 0x14)? == 0x10 { 60i64 } else { 84 };
     let mut parent = None;
     let mut has_value = false;
@@ -1000,6 +1071,7 @@ pub fn new_zip_contents(raw: &[u8]) -> NetResult<ShellItem> {
     }
     item.value_is_null = !has_value;
     let mut before = String::new();
+    item.set("ParentFolder", Value::opt_text(parent.as_deref()));
     if let Some(p) = parent.filter(|p| !p.is_empty()) {
         before.push_str(&format!("Folder in the zip file: {p}\n\n"));
     }
