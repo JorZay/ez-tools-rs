@@ -6,8 +6,10 @@
 #
 # Each line of `cases` is the arguments of one run, e.g.
 #   -f "/hives/UsrClass 1.dat" --bn DFIRBatch.reb --csv {out} --csvf out.csv
-# (quoted as in a shell). {out} is replaced by the run's output folder; --co false is added. The original runs with LANG=en_US.UTF-8 (the
-# culture this port writes dates and numbers in). Build the release binary first (cargo build --release).
+# (quoted as in a shell). {out} is replaced by the run's output folder; --co false is added. A -d folder should only hold
+# hives with names ending in a hive's name, and no links to folders: elsewhere this port finds what the original's Windows build
+# finds, not what its Linux one does. The original runs with LANG=en_US.UTF-8 (the
+# culture this port writes dates and numbers in). Give the original a Plugins folder created in NTFS order (docs/plans/recmd.md): it runs plugins in folder order. Build the release binary first (cargo build --release).
 set -uo pipefail
 
 dll=$1
@@ -18,7 +20,7 @@ same=0 diff=0 n=0
 
 console() {
     # after the banner and the command line; without timings, stack traces, the folder name and the run's time stamp
-    sed -n '/^Command line:/,$p' "$1" | tail -n +2 | grep -a -v -e '^Total search time' -e '^   at ' -e '^System\.' -e '^--- End of' |
+    sed -n '/^Command line:/,$p' "$1" | tail -n +2 | grep -a -v -e '^Total search time' -e '^   at ' -e '^System\.' -e '^--- End of' -e '^Searching .* for hives' |
         sed -E "s#$2#{out}#g; s/[0-9]{14}/{time}/g"
 }
 

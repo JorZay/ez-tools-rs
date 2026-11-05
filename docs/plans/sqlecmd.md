@@ -176,7 +176,7 @@ Known differences:
 
 - **Sample gaps.** Generated databases and empty browser profiles show that the queries run and that values convert the same, not what a real, full database gives. Real
   databases from your cases would help, and the 8 maps above have no rows yet.
-- **Other SQLite changes.** 3.47 to 3.53 may change other results in rare cases. None showed in the queries here. Newer functions (`if`, `unistr`) exist here and not in the reference, so a
+- **Other SQLite changes.** 3.47 to 3.53 can change results. On a real extraction (2026-11-05) `Windows_ChromiumBrowser_Favicons`, which joins three tables and sorts only by `favicons.id`, gives the same rows with ties in another order: 3.46 uses an automatic covering index on `icon_mapping`, 3.53 its existing index. SQLite 3.46.0 gives the reference's plan, but 3.53.2 is kept on purpose: these databases come from machines that may be compromised, and the order of ties means nothing. All other files were identical (123 files, 4 runs), and rows are never lost or changed. Newer functions (`if`, `unistr`) exist here and not in the reference, so a
   map that relies on those failing would differ.
 - **Damaged databases.** Newer SQLite could read a damaged file differently. In 220 runs it didn't.
 

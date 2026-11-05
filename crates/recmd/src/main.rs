@@ -297,6 +297,7 @@ fn run(mut args: Args) -> Result<ExitCode, String> {
         if !min_switches(&args) {
             return Ok(missing_switches(&mut log));
         }
+        log.info(&format!("Searching {d} for hives..."));
         hives = find_hives(&d, &mut log, &mut errors);
         log.info("");
         log.info(&format!("Total hives found: {}", n0(hives.len() as u64)));
@@ -430,53 +431,28 @@ fn missing_switches(log: &mut Logger) -> ExitCode {
     ExitCode::FAILURE
 }
 
-/// FileSystemName.MatchesSimpleExpression, ignoring case: `*` is any run of characters, `?` any one
-fn matches_mask(mask: &str, name: &str) -> bool {
-    let m: Vec<char> = upper(mask).chars().collect();
-    let n: Vec<char> = upper(name).chars().collect();
-    let (mut mi, mut ni, mut star, mut mark) = (0, 0, None, 0);
-    while ni < n.len() {
-        if mi < m.len() && (m[mi] == '?' || m[mi] == n[ni]) {
-            mi += 1;
-            ni += 1;
-        } else if mi < m.len() && m[mi] == '*' {
-            star = Some(mi);
-            mi += 1;
-            mark = ni;
-        } else if let Some(s) = star {
-            mi = s + 1;
-            mark += 1;
-            ni = mark;
-        } else {
-            return false;
-        }
-    }
-    while mi < m.len() && m[mi] == '*' {
-        mi += 1;
-    }
-    mi == m.len()
-}
-
-const MASKS: &[&str] = &[
-    "*USRCLASS.DAT",
-    "*USER.DAT",
-    "*SYSTEM",
-    "*SAM",
-    "*SOFTWARE",
-    "*DEFAULT",
-    "*AMCACHE.HVE",
-    "*SYSCACHE.hve",
-    "*SECURITY",
-    "*DRIVERS",
-    "*COMPONENTS",
-    "*UserClasses.dat",
-    "*settings.dat",
-    "*Registry.dat",
+// What the original's Windows build looks for under -d: a hive can have any name holding one of these, as long as its
+// signature says it is one. The original's Linux build only takes names ending in them
+const NAME_PARTS: &[&str] = &[
+    "USRCLASS", "NTUSER", "SYSTEM", "SAM", "SOFTWARE", "AMCACHE", "SYSCACHE", "SECURITY", "DRIVERS", "COMPONENTS", "DEFAULT", "USER", "USERCLASSES", "SETTINGS",
+    "REGISTRY",
 ];
 const IGNORED_EXTENSIONS: &[&str] = &[".DLL", ".LOG", ".LOG1", ".LOG2", ".CSV", ".BLF", ".REGTRANS-MS", ".EXE", ".TXT", ".INI"];
 
-/// FindFiles: files whose names match the hive masks, in the folder and its subfolders (each folder's entries in the
-/// order the file system gives them, subfolders after), 4 bytes or more, without an ignored extension
+/// Whether a file starts with a hive's signature. One that can't be read counts, so that it is reported when it is
+/// processed
+fn has_hive_signature(path: &Path) -> bool {
+    use std::io::Read;
+    let mut signature = [0u8; 4];
+    match std::fs::File::open(path).and_then(|mut f| f.read(&mut signature)) {
+        Ok(n) => n == 4 && &signature == b"regf",
+        Err(_) => true,
+    }
+}
+
+/// The hives in the folder and its subfolders, as the original's Windows build finds them: names holding one of
+/// NAME_PARTS, 4 bytes or more, without an ignored extension, with a hive's signature. Each folder's entries are in the
+/// order the file system gives them, subfolders after. Links to folders aren't followed
 fn find_hives(d: &str, log: &mut Logger, errors: &mut u32) -> Vec<String> {
     let root = full_path(d);
     let mut found = Vec::new();
@@ -497,8 +473,8 @@ fn find_hives(d: &str, log: &mut Logger, errors: &mut u32) -> Vec<String> {
                 pending.push_back(path);
                 continue;
             }
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if MASKS.iter().any(|m| matches_mask(m, &name)) {
+            let name = upper(&entry.file_name().to_string_lossy());
+            if !path.is_dir() && NAME_PARTS.iter().any(|part| name.contains(part)) {
                 found.push(path);
             }
         }
@@ -519,6 +495,10 @@ fn find_hives(d: &str, log: &mut Logger, errors: &mut u32) -> Vec<String> {
             let ext = ez_common::net::path_extension(&s);
             if IGNORED_EXTENSIONS.contains(&upper(ext).as_str()) {
                 log.debug(&format!("Skipping {s} since its extension ({ext}) is in ignoreMasks"));
+                return false;
+            }
+            if !has_hive_signature(p) {
+                log.debug(&format!("Skipping {s}: it does not have a hive's signature"));
                 return false;
             }
             true

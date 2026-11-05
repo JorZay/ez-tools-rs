@@ -16,6 +16,13 @@ Status: core done (2026-11-02): `registry-ez` and `recmd`. All 69 plugins done (
   narrow no-break space; N and P with 3 decimals), where the original follows the machine's language. BinaryConvert `Sid` gives the SID (as RECmd on Windows does, not the
   Linux build's "only available on Windows" note); `--vss` is ignored; .NET stack traces after errors are not
   printed; YAML syntax error messages are the Rust parser's.
+- `-d` finds hives as the original's Windows build (changed 2026-11-05, on the same rule as rla): any name holding USRCLASS, NTUSER,
+  SYSTEM, SAM, SOFTWARE, AMCACHE, SYSCACHE, SECURITY, DRIVERS, COMPONENTS, DEFAULT, USER, USERCLASSES, SETTINGS or REGISTRY, with the
+  `regf` signature, and links to folders aren't followed. The Linux build takes names ending in its masks and follows those links.
+  This can only add hives: on the Registry.Test folder 22 hives where the Linux build opens 8 (of which 710 rows become 930, DFIRBatch). A file with a hive's
+  name that isn't a hive is no longer opened, so counts on the console leave it out. Checked: on a tree of exact names, CSV, JSON and
+  searches are the same as the Linux reference (JSON but for the known `/` in plugin file names); on the Registry.Test folder, the batch
+  CSV and all plugin CSVs (1,174 rows) are the same rows as the reference run with `-f` on each of the 22 hives.
 
 ## What is ported
 
@@ -79,7 +86,7 @@ errors), and the CLIs are thin clients.
 
 `crates/rla`, from the same RECmd commit (rla 2026.10.1, Registry 2026.10.1): `-f`, `-d`, `--out`, `--ca`, `--cn`, `--nop`, `--debug`, `--trace`, `--co`. The replay is `registry-ez`'s; this crate finds hives and logs, decides where each hive is saved (`names.rs`, with upstream's `OutputNamesTests`) and writes it.
 
-Parity: `tools/gen-rla-cases.py` makes the corpus and `tools/parity-rla.sh` compares saved files (names and bytes) and exit codes against the .NET 10 reference. 482 runs, 0 differences (2026-11-05), and the original replayed logs in 223 of them: the 28 Registry.Test files; the museum's dirty SYSTEM with 14 arrangements of its logs; files too short to be hives; bad arguments and outputs; a KAPE-like tree under `-d`; 40 logs built with valid checksums and hashes, reaching each check of the replay in both formats; and 300 of those with random values and bytes. Console output is the same in all but 6: the help (this port's), and the 5 `-d` runs below. Console lines of `--debug` runs aren't compared, as they start with a time. No real extraction has been run yet.
+Parity: `tools/gen-rla-cases.py` makes the corpus and `tools/parity-rla.sh` compares saved files (names and bytes) and exit codes against the .NET 10 reference. 482 runs, 0 differences (2026-11-05), and the original replayed logs in 223 of them: the 28 Registry.Test files; the museum's dirty SYSTEM with 14 arrangements of its logs; files too short to be hives; bad arguments and outputs; a KAPE-like tree under `-d`; 40 logs built with valid checksums and hashes, reaching each check of the replay in both formats; and 300 of those with random values and bytes. Console output is the same in all but 6: the help (this port's), and the 5 `-d` runs below. Console lines of `--debug` runs aren't compared, as they start with a time. Two real KAPE extractions (2026-11-05) gave the same saved files and exit codes in 267 runs: `-f --ca` on each of 261 hives and 6 `-d` runs, with logs replayed in 21 hives.
 
 Differences from the Linux reference, on purpose, following the original's Windows build:
 
@@ -144,3 +151,10 @@ EvtxECmd), or install the .NET 10 SDK. RECmd needs the plugins next to it (`Plug
 4. Repository: decided (2026-11-02): one workspace, shared with the other tools (see mftecmd.md, Layout).
 
 Also needed: real hives to test with (extractions with their `.LOG1`/`.LOG2`, ideally with shadow copies).
+
+## Real extractions (2026-11-05)
+
+Two KAPE extractions (31 GB, one with 3 shadow copies), not in this repository. 750 runs of RECmd: the 261 hives with DFIRBatch and Kroll_Batch, searches on the main hives, and `-d` on each extraction. Output files and exit codes are identical. A batch file of every plugin's key gives rows from 58 of the 69 plugins; the extractions have no rows for AppCompatFlags, Ares, DHCPNetworkHint, DsrmAdminLogonBehaviour, LastVisitedMRU, OpenSaveMRU, the 4 7-Zip plugins and SyscacheObjectTable, so those remain checked on generated data only.
+
+- **Plugin order.** Where two plugins share a key (Adobe and AdobeTrustManager on `Software\Adobe`), the original runs them in the order the file system lists its Plugins folder, so its batch rows depend on the folder. NTFS lists names sorted, which is this port's order. Compare with a Plugins folder created in that order (`LC_ALL=C sort -f`): on btrfs the listing follows creation order, and a plain copy can differ.
+- **Console.** The original logs `Error getting ValueData` several times per value where this port logs it once (known), and under `-d` it also tries files that aren't hives (7 and 2 here) and reports them, where the Windows build skips them.

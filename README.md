@@ -41,7 +41,9 @@ recmd -f /cases/host1/SYSTEM --kn 'ControlSet001\Services\bam' --details
 ```
 
 Differences: dates and numbers inside values are en-US as .NET writes them, where the original follows the machine's
-language; SID conversions give the SID as on Windows; `--vss` is ignored. `tools/parity-recmd.sh` compares with the original.
+language; SID conversions give the SID as on Windows; `--vss` is ignored; as the original's Windows build, `-d` takes any file
+whose name holds a hive's name and that has a hive's signature, and doesn't follow links to folders. `tools/parity-recmd.sh`
+compares with the original.
 
 ## rla
 
