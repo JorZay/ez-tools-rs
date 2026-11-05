@@ -7,7 +7,7 @@ Each tool is a library (which never prints or exits, so other programs can use i
 |---|---|
 | [EvtxECmd](https://github.com/EricZimmerman/evtx) → `evtxecmd` | Done |
 | [MFTECmd](https://github.com/EricZimmerman/MFTECmd) → `mftecmd` | Done |
-| [RECmd](https://github.com/EricZimmerman/RECmd) → `recmd` | Core and 40 of 69 plugins done; the other plugins and rla next (`docs/plans/recmd.md`) |
+| [RECmd](https://github.com/EricZimmerman/RECmd) → `recmd` | Core and 65 of 69 plugins done; the 4 large plugins and rla next (`docs/plans/recmd.md`) |
 | [PECmd](https://github.com/EricZimmerman/PECmd) → `pecmd` | Done (`docs/plans/pecmd.md`) |
 | [AmcacheParser](https://github.com/EricZimmerman/AmcacheParser) → `amcacheparser` | Done (`docs/plans/amcache.md`) |
 | [AppCompatCacheParser](https://github.com/EricZimmerman/AppCompatCacheParser) → `appcompatcacheparser` | Done (`docs/plans/appcompatcache.md`) |

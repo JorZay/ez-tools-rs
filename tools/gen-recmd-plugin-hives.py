@@ -246,6 +246,147 @@ if SAMPLES:
     for n in range(300):
         vals = [damage(r.choice(good), r) for _ in range(r.randint(1, 3))]
         EXTRA_HIVES[f'tb/{n}/NTUSER.DAT'] = ('ntuser.dat', tree((EXPLORER + '\\Taskband', rv(('Favorites', B(damage(favorites(*vals)[1], r)))))))
+# The medium plugins
+def ftb(n=0): return struct.pack('<q', FT + n)
+def hexa(t): return t.encode('latin-1').hex().upper()
+def adobe_item(date, **kw):
+    v = {'=tDIText': S('/C/a.pdf'), '=tFileName': S('a.pdf'), '=uFileSize': D(1234), '=tFileSource': S('src'), '=uPageCount': D(7)}
+    if date is not None: v['=sDate'] = S(date)
+    v.update(kw); return v
+DATES = ["D:20200102030405+01'00'", "D:20200102030405-05'30'", "D:20200102030405Z", "D:20200102030405Z00'00'", "D:20200102030405+0'00'", "D:20200102030405+0100", "D:20200102030405+100", "D:20200102030405+01", "D:20200102030405+1", "D:20200102030405+14'00'", "D:20200102030405+14'01'", "D:20200102030405+15'00'", "D:20200102030405+01'60'", "D:20201302030405+01'00'", "D:20200230030405+01'00'", "D:20200102250405+01'00'", "D:00010101000000+01'00'", "D:99991231235959-01'00'", "D:00000101000000+01'00'", "D:2020010203040", "short", "XXabcd0102030405+01'00'", "D:20200102030405", "D:20200102030405 +01'00'"]
+ARES_AWAY = '5468697320697320616E206175746F6D617469632061776179206D6573736167652067656E65726174656420627920417265732070726F6772616D2C20757365722069736E27742068657265206E6F772E'
+HINT = 'Home Wifi'.encode('latin-1').hex()[::-1]
+SYSTIME = struct.pack('<8h', 2020, 2, 3, 4, 5, 6, 7, 8)
+USERASSIST = {'{CEBFF5CD-ACE2-4F4F-9178-9926F41749EA}': {'Count': rv(
+   ('{1NP14R77-02R7-4R5Q-O744-2RO1NR5198O7}\\abc.rkr', B(b'\0' * 4 + struct.pack('<ii', 12, 3) + struct.pack('<i', 123456789) + b'\0' * 44 + ftb() + b'\0' * 4)),
+   ('HRZR_PGYFRFFVBA', B(b'\0' * 4 + struct.pack('<i', 2) + ftb())), ('short', B(b'\1\2\3')), ('{ABCDEF01-0000-0000-0000-000000000000}\\x', B(b'\0' * 4 + struct.pack('<i', 1234567) + struct.pack('<q', 100))),
+   ('C:\\Znva.rkr', B(b'\0' * 4 + struct.pack('<ii', -5, -1) + struct.pack('<i', -90061000) + b'\0' * 44 + ftb(5) + b'\0' * 4)), ('neg', B(b'\0' * 8 + struct.pack('<q', -1))))}, 'Empty': {}}
+def office(path_, ft_='01D005C5B44B6300'): return S(f'[F00000000][T{ft_}][O00000000]*{path_}')
+OFFICE_VALUES = rv(('Item 1', office('C:\\a\\doc.docx')), ('Item 2', office('C:\\read.docx', '1D005C5B44B6300')), ('Max Display', D(25)), ('Item Metadata 1', S('<x/>')), ('FOLDER1', S('C:\\folder')), ('Item 3', S('notentry')), ('Item 4', S('[T00]')), ('Item 5', S('[F0]*noT')), ('Item 6', S('[TZZ]*bad')), ('Item 7', office('C:\\late.docx', 'FFFFFFFFFFFFFFFF')))
+def taskflow(*rows):
+    b = b'\0' * 4 + ftb() + b'\0' * 0xd
+    for full, exe, title in rows:
+        b += b'\x12\x34' + bytes([len(full)]) + full.encode('utf-16-le') + b'\0' * 5 + b'\xd2\0' + bytes([len(exe)]) + exe.encode('utf-16-le')
+        if title is None: b += struct.pack('<h', 0x32c6) + b'\0' * 0x18
+        else: b += b'\1\0' + bytes([len(title)]) + title.encode('utf-16-le') + b'\0' * 0x1a
+    return B(b)
+def icons(*names, count=None):
+    b = b'\0' * 0x18 + struct.pack('<h', len(names) if count is None else count) + b'\0' * 6
+    for n in names: b += struct.pack('<h', len(n)) + b'\0' * 6 + n.encode('utf-16-le')
+    return B(b)
+RECENT_APP = {'=AppId': S('app.one'), '=AppPath': S('C:\\one.exe'), '=LastAccessedTime': Q(FT), '=LaunchCount': D(4), 'RecentItems': {'{i}': {'=DisplayName': S('doc'), '=LastAccessedTime': Q(FT + 1), '=Path': S('C:\\doc.txt')}, '{j}': {'=LastAccessedTime': Q(FT + 2)}}}
+TR = '-'.join(f'{x:02X}' for x in ftb()) + '-00-00-00-00-'
+def trust(tail): return B(bytes.fromhex(TR.replace('-', '')) + bytes.fromhex(tail))
+M_NTUSER = tree(
+ ('Software\\Adobe', {'Acrobat Reader': {'11.0': {'AVGeneral': {'cRecentFiles': {**{f'c{i}': adobe_item(d) for i, d in enumerate(DATES)}, 'nodate': adobe_item(None), 'bin': {'=tDIText': B(b'/C/b\xe9n.pdf\0'), '=sDate': B(b"D:20200102030405+01'00'\0"), '=uFileSize': B(b'\1\0')}, 'bare': {}}}}, 'noav': {}}, 'noversion': {}}),
+ ('Software\\Ares', {'=Network.DHTID': S('AB-CD'), '=Download.Folder': S(hexa('C:\\dl')), '=Personal.CustomMessage': S('hi'), '=Personal.Nickname': S(hexa('nick\xe9')), '=PrivateMessage.AwayMessage': S(hexa('gone')), '=Stats.LstConnect': D(1600000000), '=Transfer.ServerPort': D(1234), '=Personal.GUID': S('{g}'),
+   'Search.History': {'genHist': {'=' + hexa('term one'): S(''), '=' + hexa('two'): S(''), '=zz': S('')}, 'audio1234': {'=' + hexa('song'): S('')}, 'none': {}}}),
+ (EXPLORER + '\\ComDlg32\\CIDSizeMRU', rv(('MRUListEx', mru(1, 0, 1)), ('0', B(U('b.exe'))), ('1', B(U('a.exe') + U('more'))), ('5', B(U('notlisted.exe'))), ('name', B(U('x'))), ('Oddity', S('t')))),
+ (EXPLORER + '\\ComDlg32\\FirstFolder', rv(('MRUListEx', mru(1, 0)), ('0', B(U('b.exe'))), ('1', B(U('a.exe') + U('C:\\f'))))),
+ (EXPLORER + '\\ComDlg32\\LastVisitedMRU', rv(('MRUList', S('ba')), ('a', B(U('a.exe') + U('C:\\a'))), ('b', B(U('b.exe') + U('C:\\b'))), ('c', B(U('c.exe') + U('C:\\c'))))),
+ (EXPLORER + '\\ComDlg32\\OpenSaveMRU', {**rv(('MRUList', S('ba')), ('a', S('C:\\a.txt')), ('b', S('C:\\b.txt'))), '*': rv(('MRUList', S('a')), ('a', S('C:\\s.txt'))), 'pdf': rv(('z', S('C:\\z.pdf'))), 'none': {}}),
+ (EXPLORER + '\\FileExts', {'.txt': {'OpenWithList': rv(('MRUList', S('bca')), ('a', S('a.exe')), ('b', S('b.exe'))), 'OpenWithProgids': rv(('txtfile', B(b'')), ('other', B(b''))), 'UserChoice': rv(('ProgId', S('Applications\\a.exe'))), 'Skip': {}}, '.bare': {'=Progid': S('p')}, '.empty': {}, '.nolist': {'OpenWithList': {}}}),
+ ('Software\\Microsoft\\Windows\\Shell\\Bags\\1\\Desktop', rv(('IconLayouts', icons('This PC', 'Recycle Bin', 'd\u00e9j\u00e0')))),
+ ('Software\\Microsoft\\Office\\16.0\\Word\\File MRU', OFFICE_VALUES),
+ ('Software\\Microsoft\\Office\\16.0\\Word\\User MRU\\ADAL_1\\File MRU', rv(('Item 1', office('C:\\read.docx')))),
+ ('Software\\Microsoft\\Office\\16.0\\Word\\User MRU\\ADAL_1\\Place MRU', rv(('Item 1', office('C:\\place')))),
+ ('Software\\Microsoft\\Office\\16.0\\Word\\Reading Locations', {'Document 0': rv(('File Path', S('C:\\read.docx'))), 'Document 1': {}}),
+ ('Software\\Microsoft\\Office\\16.0\\Word\\Security\\Trusted Documents\\TrustRecords', rv(('C:\\t1.docx', trust('0000000001000000')), ('C:\\t2.docm', trust('00000000FFFFFF7F')), ('C:\\t3.docx', trust('0000000002000000')))),
+ ('Software\\Microsoft\\Office\\15.0\\Excel\\Security\\Trusted Documents\\TrustRecords', rv(('C:\\e.xlsx', trust('0000000001000000')))),
+ ('Software\\Microsoft\\Internet Explorer', {'Suggested Sites': rv(('LogFileFolder', S('C:\\Users\\bob\\AppData')), ('Other', D(1))), 'Main': {}}),
+ ('Software\\Microsoft\\Windows\\CurrentVersion\\Search\\RecentApps', {'{a}': RECENT_APP, '{b}': {**RECENT_APP, 'RecentItems': {}}}),
+ ('Software\\Microsoft\\Windows\\CurrentVersion\\CloudStore\\Store\\Cache\\DefaultAccount\\$$windows.data.taskflow.shellactivities\\Current', rv(('Data', taskflow(('C:\\a\\x.txt', 'notepad.exe', ' Title '), ('C:\\b', 'b.exe', None))))),
+ (EXPLORER + '\\UserAssist', USERASSIST),
+ (EXPLORER + '\\WordWheelQuery', {**rv(('MRUListEx', mru(1, 0)), ('0', B(U('second'))), ('1', B(U('first')))), '{sub}': rv(('MRUListEx', mru(0)), ('0', B(U('subterm')))), 'nomru': rv(('0', B(U('x')))), 'dup': rv(('MRUListEx', mru(1, 1)), ('1', B(U('y')))), 'odd': rv(('MRUListEx', mru(0)), ('name', B(U('y'))), ('0', B(U('z'))))}),
+)
+BAD_NTUSER = {
+ 'ares1': tree(('Software\\Ares', rv(('Network.DHTID', S('x')), ('Stats.LstConnect', S('abc')), ('Personal.GUID', S('never'))))),
+ 'ares2': tree(('Software\\Ares', {'=Personal.GUID': S('g'), 'Search.History': {'abc': {'=' + hexa('t'): S('')}, 'zzzz1': {'=' + hexa('t'): S('')}}})),
+ 'ares3': tree(('Software\\Ares', rv(('Download.Folder', S('zz')), ('PrivateMessage.AwayMessage', S(ARES_AWAY))))),
+ 'ares4': tree(('Software\\Ares', rv(('PrivateMessage.AwayMessage', S(ARES_AWAY)), ('Transfer.ServerPort', D(0))))),
+ 'first1': tree((EXPLORER + '\\ComDlg32\\FirstFolder', rv(('0', B(U('nolist'))))), (EXPLORER + '\\ComDlg32\\LastVisitedMRU', rv(('a', B('nonul'.encode('utf-16-le'))), ('b', B(U('b') + U('c')))))),
+ 'first2': tree((EXPLORER + '\\ComDlg32\\FirstFolder', rv(('MRUListEx', mru(0)), ('0', B(U('a'))), ('7', B(U('b'))), ('8', B(U('c')))))),
+ 'first3': tree((EXPLORER + '\\ComDlg32\\FirstFolder', rv(('MRUListEx', B(struct.pack('<i', 0))), ('0', B(U('a')))))),
+ 'first4': tree((EXPLORER + '\\ComDlg32\\FirstFolder', rv(('MRUListEx', mru(0)), ('0', B(U('a'))), ('nan', B(U('b')))))),
+ 'icons1': tree(('Software\\Microsoft\\Windows\\Shell\\Bags\\1\\Desktop', rv(('IconLayouts', B(b'\1\2'))))),
+ 'icons2': tree(('Software\\Microsoft\\Windows\\Shell\\Bags\\1\\Desktop', rv(('IconLayouts', icons('one', count=3))))),
+ 'icons3': tree(('Software\\Microsoft\\Windows\\Shell\\Bags\\1\\Desktop', rv(('IconLayouts', B(b'\0' * 0x18 + struct.pack('<h', 1) + b'\0' * 6 + struct.pack('<h', 500) + b'\0' * 6))))),
+ 'apps1': tree(('Software\\Microsoft\\Windows\\CurrentVersion\\Search\\RecentApps', {'{a}': RECENT_APP, '{b}': {'=AppId': S('x')}, '{c}': RECENT_APP})),
+ 'apps2': tree(('Software\\Microsoft\\Windows\\CurrentVersion\\Search\\RecentApps', {'{a}': {**RECENT_APP, 'RecentItems': {'bad': {'=DisplayName': S('d')}}}})),
+ 'task1': tree(('Software\\Microsoft\\Windows\\CurrentVersion\\CloudStore\\Store\\Cache\\DefaultAccount\\$$windows.data.taskflow.shellactivities\\Current', rv(('Data', B(b'\0\1'))))),
+ 'task2': tree(('Software\\Microsoft\\Windows\\CurrentVersion\\CloudStore\\Store\\Cache\\DefaultAccount\\$$windows.data.taskflow.shellactivities\\Current', rv(('Data', B(taskflow(('C:\\a', 'b', None))[1][:40]))))),
+ 'trust1': tree(('Software\\Microsoft\\Office\\16.0\\Word\\Security\\Trusted Documents\\TrustRecords', rv(('C:\\t.docx', trust('0000000001000000'))))),
+ 'trust2': tree(('Software\\Microsoft\\Office\\16.0\\Word\\Security\\Trusted Documents\\TrustRecords', rv(('C:\\t.docx', trust('0000000001000000')), ('C:\\s', S('zz')))), ('Software\\Microsoft\\Internet Explorer', {'Main': {}})),
+ 'trust3': tree(('Software\\Microsoft\\Office\\16.0\\Word\\Security\\Trusted Documents\\TrustRecords', rv(('C:\\t.docx', trust('0000000001000000')))), ('Software\\Microsoft\\Internet Explorer', {'Suggested Sites': rv(('LogFileFolder', S('nobackslash')))})),
+ 'trust4': tree(('Software\\Microsoft\\Office\\16.0\\Word\\Security\\Trusted Documents\\TrustRecords', rv(('C:\\t.docx', B(b'\1\2')))), ('Software\\Microsoft\\Internet Explorer', {})),
+}
+def props(name=None, times=True):
+    p = {}
+    if name is not None: p['{540b947e-8b40-45bc-a8a2-6a0b894cbda2}'] = {'0004': rv(('(default)', B(name.encode('utf-16-le'))))}
+    if times: p['{83da6326-97a6-4088-9453-a1923f573b29}'] = {'0064': rv(('(default)', B(ftb(1)))), '0065': rv(('(default)', B(ftb(2)))), '0066': rv(('(default)', B(ftb(3)))), '0067': rv(('(default)', B(b'\1\2')))}
+    return {'Properties': p}
+SYS_MEDIUM = {'ControlSet001': {
+ 'Control': {'TimeZoneInformation': rv(('TimeZoneKeyName', S('Pacific Standard Time')), ('Bias', D(480)), ('StandardName', S('@tzres.dll,-212')), ('StandardBias', D(0)), ('StandardStart', B(bytes.fromhex('00000A00020017003B003B00E7030600'))), ('DaylightName', S('d')), ('DaylightBias', D(0xFFFFFFC4)), ('DaylightStart', B(bytes.fromhex('00000300020002000000000000000000'))), ('ActiveTimeBias', D(420)), ('Other', D(1)))},
+ 'Enum': {
+  'USB': {'VID_1&PID_2': {'SER1': {**rv(('ParentIdPrefix', S('7&abc')), ('Service', S('USBSTOR')), ('DeviceDesc', S('@usb.inf,%desc%;USB Device')), ('FriendlyName', S('Stick;Friendly')), ('LocationInformation', S('Port_#0001'))), **props('Name')}, 'SER2': {}}, 'empty': {}},
+  'USBSTOR': {'Disk&Ven_A&Prod_B&Rev_1': {'SER1&0': {**props('Disk name'), 'Device Parameters': {'Partmgr': rv(('DiskId', S('{d}')))}}, 'SER2&0': {}}, 'Disk&Ven_A': {'x': {}}, 'Disk&Ven_A&Prod_C&Rev_2': {}},
+  'SCSI': {'Disk&Ven_V&Prod_P': {'4&1': {**props('Scsi name'), 'Device Parameters': {'Partmgr': rv(('DiskId', S('{s}'))), 'Storport': rv(('InitialTimestamp', B(ftb(9))))}}, '4&2': {}}, 'CdRom&Ven_X&Prod_Y&Rev_1': {'z': {}}},
+  'SWD': {'WPDBUSENUM': {'_??_x': {**rv(('Service', S('WUDFWpdFs')), ('DeviceDesc', S('a;b;c')), ('FriendlyName', S('nosemi'))), **props()}, 'bare': {}}, 'empty': {}},
+ },
+ 'Services': {
+  'one': {**rv(('Description', S('desc')), ('DisplayName', S('Disp')), ('ServiceDll', S('a.dll')), ('Group', S('g')), ('ImagePath', S('C:\\one.exe')), ('RequiredPrivileges', M('SeA', 'SeB')), ('Type', D(0x110)), ('Start', D(2))), 'parameters': rv(('servicedll', S('b.dll')))},
+  'two': rv(('TYPE', D(1)), ('START', D(9)), ('group', S('notexact'))), 'bits': rv(('Type', D(0x200)), ('Start', D(0))), 'combo': rv(('Type', D(0x213))), 'zero': rv(('Type', D(0)), ('Start', D(1))), 'bare': {},
+  'Tcpip': {'Parameters': {'Interfaces': {
+    '{i1}': {**rv(('DhcpNetworkHint', S(HINT)), ('DhcpDefaultGateway', M('10.0.0.1')), ('DhcpIPAddress', S('10.0.0.5')), ('DhcpServer', S('10.0.0.2')), ('LeaseObtainedTime', D(1600000000)), ('LeaseTerminatesTime', D(1600003600)), ('DhcpDomain', S('corp'))), 'sub1': rv(('DhcpNetworkHint', S(HINT)), ('LeaseObtainedTime', D(1)), ('LeaseTerminatesTime', D(2))), 'sub2': {}},
+    '{i2}': rv(('DhcpNetworkHint', S('zz'))), '{i3}': {'a': rv(('DhcpNetworkHint', S(HINT + 'A')), ('LeaseObtainedTime', D(1)), ('LeaseTerminatesTime', D(2)))}}}},
+  'SharedAccess': {'Parameters': {'FirewallPolicy': {
+    'FirewallRules': rv(('r1', S('v2.30|Action=Allow|Active=TRUE|Dir=In|Protocol=6|LPort=80|Name=Web,Thing|Desc=d=e|App=C:\\a.exe|')), ('r2', S('Action=Block|Protocol=99|RPort=1|RPort=2|XName=odd|EmbedCtxt=x')), ('r3', S('')), ('r4', D(1))),
+    'RestrictedServices': {'AppIso': {'FirewallRules': rv(('a', S('Action=Allow|Protocol=17')))}}, 'Mdm': {'FirewallRules': rv(('m', S('Protocol=1')))}}}},
+ }}}
+SYS_BAD = {'ControlSet001': {
+ 'Control': {'TimeZoneInformation': rv(('TimeZoneKeyName', S('a')), ('StandardStart', B(b'\1\2\3')), ('Bias', D(5)))},
+ 'Enum': {'USB': {'a': {'b': props('n') | {'Properties': {'{83da6326-97a6-4088-9453-a1923f573b29}': {'0064': rv(('(default)', B(struct.pack('<q', -1))))}}}}, 'c': {'d': {}}}, 'USBSTOR': {'Disk&A&B&C': {'s': {'Properties': {'{83da6326-97a6-4088-9453-a1923f573b29}': {'0066': rv(('(default)', B(struct.pack('<q', -1))))}}}}}},
+ 'Services': {'a': rv(('Type', S('x'))), 'b': rv(('Type', D(1))), 'Tcpip': {'Parameters': {'Interfaces': {'{i}': {'a': rv(('DhcpNetworkHint', S('zz')))}}}}}}}
+SW_MEDIUM = tree(('Microsoft\\Windows NT\\CurrentVersion\\NetworkList', {
+  'Profiles': {'{p1}': rv(('DateCreated', B(SYSTIME)), ('DateLastConnected', B(SYSTIME)), ('ProfileName', S('Home')), ('NameType', D(71))), '{p2}': rv(('DateCreated', B(SYSTIME)), ('DateLastConnected', B(SYSTIME)), ('ProfileName', S('Lan')), ('NameType', D(6))), '{p3}': rv(('DateCreated', B(SYSTIME)), ('DateLastConnected', B(SYSTIME)), ('ProfileName', S('Odd')), ('NameType', D(5))), '{p4}': rv(('DateCreated', B(SYSTIME)), ('DateLastConnected', B(SYSTIME)), ('ProfileName', S('None')), ('NameType', D(0))), '{p5}': rv(('DateCreated', B(b'\1\2')), ('DateLastConnected', B(SYSTIME)), ('ProfileName', S('x')), ('NameType', D(6))), '{p6}': rv(('DateCreated', B(SYSTIME))), '{p7}': rv(('DateCreated', B(struct.pack('<8h', 2020, 13, 1, 1, 1, 1, 1, 1))), ('DateLastConnected', B(SYSTIME)), ('ProfileName', S('x')), ('NameType', D(6)))},
+  'Signatures': {'Unmanaged': {'s1': rv(('DefaultGatewayMac', B(b'\0\1\2\3\4\5')), ('DnsSuffix', S('home')), ('ProfileGuid', S('{p1}')), ('FirstNetwork', S('Wifi'))), 's2': rv(('DnsSuffix', S('x')))}, 'Managed': {'s3': rv(('DefaultGatewayMac', B(b'\6\7\x08\x09\x0a\x0b')), ('DnsSuffix', S('corp')), ('ProfileGuid', S('{p2}')), ('FirstNetwork', S('Lan')))}}}))
+SW_BAD = {'p1': tree(('Microsoft\\Windows NT\\CurrentVersion\\NetworkList', {'Other': {}})), 'p2': tree(('Microsoft\\Windows NT\\CurrentVersion\\NetworkList', {'Profiles': {'{p}': rv(('DateCreated', B(SYSTIME)), ('DateLastConnected', B(SYSTIME)), ('ProfileName', S('H')), ('NameType', D(71)))}})), 'p3': tree(('Microsoft\\Windows NT\\CurrentVersion\\NetworkList', {'Profiles': {'{p}': rv(('DateCreated', B(SYSTIME)), ('DateLastConnected', B(SYSTIME)), ('ProfileName', S('H')), ('NameType', D(71)))}, 'Signatures': {}})), 'p4': tree(('Microsoft\\Windows NT\\CurrentVersion\\NetworkList', {'Profiles': {'{p}': rv(('DateCreated', B(SYSTIME)), ('DateLastConnected', B(SYSTIME)), ('ProfileName', S('H')), ('NameType', D(71)))}, 'Signatures': {'Unmanaged': {'s': rv(('DefaultGatewayMac', B(b'\0')), ('DnsSuffix', S('d')), ('ProfileGuid', S('{p}')), ('FirstNetwork', S('F')))}}}))}
+def alias(name, comment, *sids):
+    body = name.encode('utf-16-le') + comment.encode('utf-16-le')
+    members = b''.join(sids)
+    h = bytearray(0x34)
+    struct.pack_into('<i', h, 0x10, 0); struct.pack_into('<i', h, 0x14, len(name) * 2)
+    struct.pack_into('<i', h, 0x1c, len(name) * 2); struct.pack_into('<i', h, 0x20, len(comment) * 2)
+    struct.pack_into('<i', h, 0x28, len(body)); struct.pack_into('<i', h, 0x30, len(sids))
+    return B(bytes(h) + body + members)
+SID1 = bytes.fromhex('01010000000000050b000000'); SID5 = bytes.fromhex('010500000000000515000000') + struct.pack('<4I', 1, 2, 3, 1001)
+SAM = tree(('SAM\\Domains\\Builtin\\Aliases', {'00000220': rv(('C', alias('Administrators', 'Admins', SID1, SID5))), '00000221': rv(('C', alias('Users', ''))), 'Names': {'Administrators': {}}, '00000222': rv(('C', B(b'\1\2'))), '00000223': rv(('C', alias('Odd', 'x', b'\2\0\0\0' + b'\0' * 8))), '00000224': rv(('C', alias('Cut', 'x', SID5[:10])))}))
+SYSCACHE = tree(('DefaultObjectStore\\ObjectTable', {'1': rv(('_ObjectId_', Q(5)), ('_ObjectLru_', D(6)), ('_FileId_', Q(0x0002000300000007)), ('_Usn_', Q(8)), ('_UsnJournalId_', Q(9)), ('AeFileID', B(U('0000ABCDEF'))), ('AeProgramID', B(U('prog')))), '2': {}, '3': rv(('_FileId_', B(b'\1\2'))), '4': rv(('_ObjectId_', S('x')))}))
+EXTRA_HIVES.update({'m_ntuser/NTUSER.DAT': ('ntuser.dat', M_NTUSER), 'm_system/SYSTEM': ('SYSTEM', SYS_MEDIUM), 'm_system_bad/SYSTEM': ('SYSTEM', SYS_BAD), 'm_software/SOFTWARE': ('SOFTWARE', SW_MEDIUM), 'm_sam/SAM': ('SAM', SAM), 'm_syscache/Syscache.hve': ('Syscache.hve', SYSCACHE)})
+for k_, v_ in BAD_NTUSER.items(): EXTRA_HIVES[f'm_{k_}/NTUSER.DAT'] = ('ntuser.dat', v_)
+for k_, v_ in SW_BAD.items(): EXTRA_HIVES[f'm_sw_{k_}/SOFTWARE'] = ('SOFTWARE', v_)
+if SAMPLES:
+    def mutated(spec, r):
+        out = {}
+        for k, v in spec.items():
+            if isinstance(v, dict):
+                out[k] = mutated(v, r)
+            elif k.startswith('=') and r.random() < 0.35:
+                kind = r.randrange(5)
+                if kind == 0: out[k] = B(bytes(r.randrange(256) for _ in range(r.randint(0, 40))))
+                elif kind == 1: out[k] = S(r.choice(['', 'x', '-1', '99999999999', '12', 'zz', 'a;b', 'A|B=C', '[T01D0]*p', 'D:2020']))
+                elif kind == 2: out[k] = D(r.choice([0, 1, 0xFFFFFFFF, 0x7FFFFFFF, 71, 1 << 20]))
+                elif kind == 3 and v[1]: out[k] = (v[0], v[1][:r.randrange(len(v[1]))])
+                elif v[1]:
+                    b = bytearray(v[1]); b[r.randrange(len(b))] = r.randrange(256); out[k] = (v[0], bytes(b))
+                else: out[k] = v
+            else:
+                out[k] = v
+        return out
+    for seed in range(1, 41):
+        r = random.Random(1000 + seed)
+        for name, (internal, spec) in {'nt/NTUSER.DAT': ('ntuser.dat', M_NTUSER), 'sy/SYSTEM': ('SYSTEM', SYS_MEDIUM), 'sw/SOFTWARE': ('SOFTWARE', SW_MEDIUM), 'sa/SAM': ('SAM', SAM), 'sc/Syscache.hve': ('Syscache.hve', SYSCACHE)}.items():
+            EXTRA_HIVES[f'md{seed}/{name}'] = (internal, mutated(spec, r))
 H_ = {
  'amcache/Amcache.hve': ('Amcache.hve', AMCACHE), 'ntuser/NTUSER.DAT': ('ntuser.dat', NTUSER), 'ntuser_bad/NTUSER.DAT': ('ntuser.dat', NTUSER_BAD),
  'ntuser_bad2/NTUSER.DAT': ('ntuser.dat', NTUSER_BAD2), 'ntuser_bad3/NTUSER.DAT': ('ntuser.dat', NTUSER_BAD3), 'ntuser_bad4/NTUSER.DAT': ('ntuser.dat', NTUSER_BAD4), 'ntuser_bad5/NTUSER.DAT': ('ntuser.dat', NTUSER_BAD5),
@@ -259,6 +400,11 @@ PATHS = [
  ('NtUser', [EXPLORER + '\\ComDlg32\\LastVisitedPidlMRU', EXPLORER + '\\ComDlg32\\LastVisitedPidlMRULegacy', EXPLORER + '\\ComDlg32\\OpenSavePidlMRU', (EXPLORER + '\\Taskband', 'Favorites'), EXPLORER + '\\Taskband', EXPLORER + '\\RecentDocs', EXPLORER + '\\RecentDocs\\*', ('Software\\7-Zip\\Compression', 'ArcHistory'), ('Software\\7-Zip\\FM', 'CopyHistory'), ('Software\\7-Zip\\FM', 'FolderHistory'), ('Software\\7-Zip\\Extraction', 'PathHistory'), ('Software\\7-Zip', 'ArcHistory'), 'Software\\7-Zip\\FM', 'Software\\Adobe', 'Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags', 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths', 'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FeatureUsage', 'Software\\Microsoft\\Windows\\CurrentVersion\\Search\\JumplistData', 'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU', 'Software\\Microsoft\\Terminal Server Client', 'Software\\Microsoft\\Internet Explorer\\TypedURLs', 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall', 'Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository', 'Software\\WinRAR']),
  ('System', [('ControlSet00*\\Control\\Session Manager\\AppCompatCache', 'AppCompatCache'), 'ControlSet00*\\Control\\Session Manager\\AppCompatCache', 'ControlSet00*\\Services\\bam\\State\\UserSettings\\*', 'ControlSet00*\\Services\\bam\\UserSettings\\*', 'ControlSet00*\\Services\\dam\\UserSettings\\*', 'ControlSet00*\\Services\\BTHPORT\\Parameters\\Devices', 'ControlSet00*\\Control\\DeviceClasses', ('ControlSet00*\\Control\\Lsa', 'DsrmAdminLogonBehavior'), 'ControlSet00*\\Control\\Lsa', 'ControlSet001\\Control\\WMI\\Autologger\\EventLog-Application', 'ControlSet001\\Control\\WMI\\Autologger\\EventLog-System', 'ControlSet002\\Control\\WMI\\Autologger\\EventLog-Application', 'ControlSet00*\\Control\\Class\\{4d36e972-e325-11ce-bfc1-08002be10318}', 'ControlSet00*\\Services\\Tcpip\\Parameters\\Interfaces', 'ControlSet00*\\Control\\NetworkSetup2']),
  ('Software', ['Microsoft\\Windows\\CurrentVersion\\App Paths', 'Microsoft\\Windows\\CurrentVersion\\Uninstall', 'WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall', 'Microsoft\\Windows\\CurrentVersion\\Installer\\UserData\\*\\Products', 'Classes\\Installer\\Products', 'Microsoft\\Windows NT\\CurrentVersion\\ProfileList', 'Microsoft\\RADAR\\HeapLeakDetection', 'WOW6432Node\\Microsoft\\RADAR\\HeapLeakDetection', 'Microsoft\\Windows Search\\VolumeInfoCache', 'Microsoft\\Windows Portable Devices']),
+ ('NtUser', ['Software\\Adobe', 'Software\\Ares', EXPLORER + '\\ComDlg32\\CIDSizeMRU', EXPLORER + '\\ComDlg32\\FirstFolder', EXPLORER + '\\ComDlg32\\LastVisitedMRU', EXPLORER + '\\ComDlg32\\OpenSaveMRU', EXPLORER + '\\FileExts', 'Software\\Microsoft\\Windows\\Shell\\Bags\\1\\Desktop', 'Software\\Microsoft\\Office\\*\\*\\File MRU', 'Software\\Microsoft\\Office\\*\\*\\User MRU\\*\\File MRU', 'Software\\Microsoft\\Office\\*\\*\\User MRU\\*\\Place MRU', 'Software\\Microsoft\\Office\\16.0\\Word\\Security\\Trusted Documents\\TrustRecords', 'Software\\Microsoft\\Office\\15.0\\Excel\\Security\\Trusted Documents\\TrustRecords', 'Software\\Microsoft\\Windows\\CurrentVersion\\Search\\RecentApps', 'Software\\Microsoft\\Windows\\CurrentVersion\\CloudStore\\Store\\Cache\\DefaultAccount\\$$windows.data.taskflow.shellactivities\\Current', EXPLORER + '\\UserAssist', EXPLORER + '\\UserAssist\\*\\Count', EXPLORER + '\\WordWheelQuery']),
+ ('System', ['ControlSet00*\\Control\\TimeZoneInformation', 'ControlSet00*\\Enum\\USB', 'ControlSet00*\\Enum\\USBSTOR', 'ControlSet00*\\Enum\\SCSI', 'ControlSet00*\\Enum\\SWD', 'ControlSet00*\\Services', 'ControlSet00*\\Services\\Tcpip\\Parameters\\Interfaces', 'ControlSet00*\\Services\\SharedAccess\\Parameters\\FirewallPolicy\\FirewallRules', 'ControlSet00*\\Services\\SharedAccess\\Parameters\\FirewallPolicy\\RestrictedServices\\AppIso\\FirewallRules', 'ControlSet00*\\Services\\SharedAccess\\Parameters\\FirewallPolicy\\Mdm\\FirewallRules']),
+ ('Software', ['Microsoft\\Windows NT\\CurrentVersion\\NetworkList']),
+ ('Sam', ['SAM\\Domains\\Builtin\\Aliases']),
+ ('Syscache', ['DefaultObjectStore\\ObjectTable']),
  ('UsrClass', ['Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository']),
 ]
 def q(s): return '"' + s.replace('\\', '\\\\') + '"'

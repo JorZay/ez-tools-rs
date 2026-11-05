@@ -1,6 +1,6 @@
 # Plan: porting RECmd to Rust
 
-Status: core done (2026-11-02): `registry-ez` and `recmd`. Plugins in progress (2026-11-04): the 36 small ones and the 4 shell item ones are done, 29 are left (see "Plugins"). rla is not started.
+Status: core done (2026-11-02): `registry-ez` and `recmd`. Plugins in progress (2026-11-04): 65 of 69 are done, the 4 large ones are left (see "Plugins"). rla is not started.
 
 ## Done: the core
 
@@ -82,7 +82,7 @@ Upstream has 69, about 12,100 lines. Rated from their size and how much they par
 | Group | Count | Plugins | Status |
 |---|---|---|---|
 | Small | 36 | 7-Zip (4), Adobe.TrustManager-Websites, Amcache (7), AppCompatCache, AppCompatFlags2, AppPaths, Bam, BluetoothServicesBthPort, DeviceClasses, DsrmAdminLogonBehaviour, ETW, FeatureUsage, JumplistData, NetworkAdapters, NetworkSettings, NetworkSetup2, Products, ProfileList, RADAR, RunMRU, TerminalServerClient, TypedURLs, Uninstall, VolumeInfoCache, WindowsApp, WindowsPortableDevices, WinRAR | Done |
-| Medium | 25 | Adobe, Ares, CIDSizeMRU, DHCPNetworkHint, FileExts, FirewallRules, FirstFolder, IconLayouts, KnownNetworks, LastVisitedMRU, OfficeMRU, OpenSaveMRU, RecentApps, SAMBuiltin, SCSI, Services, SWD, SyscacheObjectTable, TaskFlowShellActivities, TimeZoneInformation, TrustedDocuments, USB, USBSTOR, UserAssist, WordWheelQuery | To do |
+| Medium | 25 | Adobe, Ares, CIDSizeMRU, DHCPNetworkHint, FileExts, FirewallRules, FirstFolder, IconLayouts, KnownNetworks, LastVisitedMRU, OfficeMRU, OpenSaveMRU, RecentApps, SAMBuiltin, SCSI, Services, SWD, SyscacheObjectTable, TaskFlowShellActivities, TimeZoneInformation, TrustedDocuments, USB, USBSTOR, UserAssist, WordWheelQuery | Done (2026-11-05) |
 | Large | 4 | ApplicationSettingsContainer, SAM, TaskCache, AppCompatFlags (LZNT1) | To do |
 | Need `shellitems-ez` | 4 | LastVisitedPidlMRU, OpenSavePidlMRU, Taskband, RecentDocs (`Beef0004` only) | Done (2026-11-05) |
 
@@ -103,6 +103,10 @@ Results for the 36 (2026-11-04), against RECmd 2026.10.3 with `RegistryPlugins` 
 Results for the 4 shell item plugins (2026-11-05), same versions, ExtensionBlocks 2026.10.9: all output files identical in 70 runs on generated hives (hand-built odd values, all of ExtensionBlocks' sample items, and 7,500 randomly damaged items per plugin), 300 on damaged Taskband values, and 57 on the Registry.Test hives with the batch examples, which have real rows of all four (75,218 CSV lines of OpenSavePidlMRU). The only difference there is the known one for a repeated option (`--nl --nl`). `ShellItem.value_is_null` was added because JSON shows `LnkName` as null where the original leaves `Value` null; it matches the reference on 121,189 items.
 
 Known differences: `Details` has `\n` line ends as the Linux reference does, where the original on Windows writes `\r\n`. RecentDocs' `Path.GetExtension` is the Windows one (`\` and `:` end a file name), so `a.b\c` has no extension here and `.b\c` on Linux. Extensions sort by `compare_culture`, which orders letters beyond Latin-1 by code point rather than by ICU's table.
+
+Results for the 25 medium plugins (2026-11-05), same versions: 0 differences in output file contents in 58 runs on generated hives (normal, odd and missing values for every plugin), 200 on randomly damaged ones, 113 on the Registry.Test hives (the batch examples, and a batch file of every plugin's key), and 62 rechecking the other plugins' cases. Real rows came for 17 of the 25: CIDSizeMRU, FileExts, FirewallRules, FirstFolder, KnownNetworks, OfficeMRU, SAMBuiltin, SCSI, Services, SWD, TimeZoneInformation, TrustedDocuments, USB, USBSTOR, UserAssist, WordWheelQuery and Ares. The hives have nothing for Adobe, DHCPNetworkHint, IconLayouts, LastVisitedMRU, OpenSaveMRU, RecentApps, SyscacheObjectTable and TaskFlowShellActivities, so those were only compared on generated data.
+
+Known differences: DHCPNetworkHint gives the current time for a lease value that isn't there, as the original does, so those two columns can't match between any two runs. Rows of a batch file are in Windows' dll order where the Linux reference uses the disk's, which shows when two plugins read one key (DHCPNetworkHint and NetworkSettings): the same rows, in another order. Error messages of unusual damage can differ from .NET's wording on the console, not in files.
 
 ## Reference build
 

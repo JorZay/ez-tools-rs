@@ -148,12 +148,12 @@ fn text(out: &Output, row: usize, column: &str) -> Option<String> {
 const FILETIME: u64 = 132_900_000_000_000_000;
 
 #[test]
-fn table_has_the_40_plugins_once_each() {
+fn table_has_the_65_plugins_once_each() {
     let mut names: Vec<_> = PLUGINS.iter().map(|p| p.type_name).collect();
-    assert_eq!(names.len(), 40);
+    assert_eq!(names.len(), 65);
     names.sort_unstable();
     names.dedup();
-    assert_eq!(names.len(), 40);
+    assert_eq!(names.len(), 65);
 }
 
 #[test]
@@ -410,4 +410,108 @@ fn recent_docs_sorts_by_extension_key_and_finds_when_it_was_last_opened() {
     assert!(matches!(out.rows[1].columns.iter().find(|(n, _)| *n == "ExtensionLastOpened").unwrap().1, Cell::Time(Some(_))));
     assert!(matches!(out.rows[0].columns.iter().find(|(n, _)| *n == "ExtensionLastOpened").unwrap().1, Cell::Time(None)));
     assert_eq!(out.errors.len(), 1, "the value without an item");
+}
+
+// The medium plugins
+
+fn cell<'a>(row: &'a registry_plugins::ValuesOut, name: &str) -> &'a Cell {
+    &row.columns.iter().find(|(n, _)| *n == name).unwrap().1
+}
+
+#[test]
+fn user_assist_has_its_batch_columns_first_and_decodes_rot13() {
+    let mut raw = vec![0u8; 72];
+    raw[4..8].copy_from_slice(&3i32.to_le_bytes());
+    raw[8..12].copy_from_slice(&9i32.to_le_bytes());
+    raw[12..16].copy_from_slice(&90_061_000i32.to_le_bytes());
+    raw[60..68].copy_from_slice(&FILETIME.to_le_bytes());
+    let count = node("Count", vec![("P:\\Nee.rkr", Data::Binary(raw)), ("short", Data::Binary(vec![1, 2]))], vec![]);
+    let h = hive("NTUSER.DAT", node("UserAssist", vec![], vec![node("{guid}", vec![], vec![count])]));
+    let (_, out) = run("UserAssist", &h, h.root.unwrap());
+    assert_eq!(out.rows[0].csv_header(), "BatchKeyPath,BatchValueName,ProgramName,RunCounter,FocusCount,FocusTime,LastExecuted");
+    assert_eq!(text_of(&out.rows[0], "ProgramName"), "C:\\Arr.exe");
+    assert_eq!(*cell(&out.rows[0], "FocusCount"), Cell::OptInt(Some(9)));
+    assert_eq!(text_of(&out.rows[0], "FocusTime"), "1d, 1h, 01m, 01s");
+    assert_eq!(*cell(&out.rows[1], "FocusCount"), Cell::OptInt(None));
+}
+
+#[test]
+fn services_name_flags_in_csv_and_number_them_in_json() {
+    let services = vec![
+        node("one", vec![("Type", Data::Dword(0x110)), ("Start", Data::Dword(2))], vec![]),
+        node("two", vec![("TYPE", Data::Dword(0x200)), ("Start", Data::Dword(9))], vec![]),
+        node("bare", vec![], vec![]),
+    ];
+    let h = hive("SYSTEM", node("Services", vec![], services));
+    let (_, out) = run("Services", &h, h.root.unwrap());
+    assert_eq!(*cell(&out.rows[0], "ServiceType"), Cell::Flags("Win32OwnProcess, InteractiveProcess".to_string(), 0x110));
+    assert_eq!(text_of(&out.rows[0], "StartMode"), "Automatic");
+    assert_eq!(*cell(&out.rows[1], "ServiceType"), Cell::Flags("512".to_string(), 0x200));
+    assert_eq!(text_of(&out.rows[1], "StartMode"), "9");
+    assert_eq!(text_of(&out.rows[2], "StartMode"), "Disabled");
+    assert!(out.rows[0].json_line().contains("\"ServiceType\":272,"));
+    let mut line = String::new();
+    out.rows[0].csv_line(&mut line);
+    assert!(line.contains("\"Win32OwnProcess, InteractiveProcess\""), "{line}");
+}
+
+#[test]
+fn adobe_reads_its_date_forms() {
+    let item = |date: &'static str| node("c", vec![("sDate", Data::Text(date))], vec![]);
+    let opened = |date: &'static str| {
+        let recent = node("cRecentFiles", vec![], vec![item(date)]);
+        let tree = node("Adobe", vec![], vec![node("Reader", vec![], vec![node("11.0", vec![], vec![node("AVGeneral", vec![], vec![recent])])])]);
+        let h = hive("NTUSER.DAT", tree);
+        let (_, out) = run("Adobe", &h, h.root.unwrap());
+        match cell(&out.rows[0], "LastOpened") {
+            Cell::Time(t) => t.map(|t| t.format("yyyy-MM-dd HH:mm:ss")),
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_eq!(opened("D:20200102030405+01'00'").as_deref(), Some("2020-01-02 02:04:05"));
+    assert_eq!(opened("D:20200102030405-05'30'").as_deref(), Some("2020-01-02 08:34:05"));
+    assert_eq!(opened("D:20200102030405Z").as_deref(), Some("2020-01-02 03:04:05"));
+    assert_eq!(opened("D:20200102030405+0100").as_deref(), Some("2020-01-02 02:04:05"));
+    assert_eq!(opened("D:20200102030405+01"), None);
+    assert_eq!(opened("D:20200102030405+15'00'"), None);
+    assert_eq!(opened("D:20201302030405+01'00'"), None);
+    assert_eq!(opened("short"), None);
+}
+
+#[test]
+fn file_exts_without_subkeys_has_no_batch_columns() {
+    let list = node("OpenWithList", vec![("MRUList", Data::Text("ba")), ("a", Data::Text("a.exe"))], vec![]);
+    let tree = node("FileExts", vec![], vec![node(".txt", vec![], vec![list]), node(".bare", vec![("Progid", Data::Text("p"))], vec![])]);
+    let h = hive("NTUSER.DAT", tree);
+    let (_, out) = run("FileExts", &h, h.root.unwrap());
+    assert_eq!(text_of(&out.rows[0], "OpensWithExecutables"), "(Executable name for MRU slot 'b' not found!), a.exe");
+    assert_eq!(out.rows[0].batch_value_name.as_deref(), Some("Multiple"));
+    assert_eq!(text_of(&out.rows[1], "OpensWithProgramIDs"), "p");
+    assert_eq!(out.rows[1].batch_key_path, None);
+    assert_eq!(out.rows[1].batch_value_name, None);
+}
+
+#[test]
+fn first_folder_stops_at_a_value_mru_list_ex_does_not_have() {
+    let tree = node("FirstFolder", vec![("MRUListEx", Data::Binary(mru(&[0]))), ("0", Data::Binary(concat(&[&u("a.exe"), &u("C:\\f")]))), ("5", Data::Binary(u("b.exe")))], vec![]);
+    let h = hive("NTUSER.DAT", tree);
+    let (_, out) = run("FirstFolder", &h, h.root.unwrap());
+    assert_eq!(out.rows.len(), 1);
+    assert_eq!(text_of(&out.rows[0], "FolderName"), "C:\\f");
+    assert_eq!(out.errors, ["Error processing FirstFolder key: The given key '5' was not present in the dictionary."]);
+}
+
+#[test]
+fn known_networks_merge_signatures_into_profiles_and_keep_rows_without_them() {
+    let date: Vec<u8> = [2020i16, 2, 3, 4, 5, 6, 7, 8].iter().flat_map(|n| n.to_le_bytes()).collect();
+    let profile = node("{p}", vec![("DateCreated", Data::Binary(date.clone())), ("DateLastConnected", Data::Binary(date)), ("ProfileName", Data::Text("Home")), ("NameType", Data::Dword(71))], vec![]);
+    let signature = node("s", vec![("DefaultGatewayMac", Data::Text("mac")), ("DnsSuffix", Data::Text("home")), ("ProfileGuid", Data::Text("{p}")), ("FirstNetwork", Data::Text("Wifi"))], vec![]);
+    let tree = node("NetworkList", vec![], vec![node("Profiles", vec![], vec![profile]), node("Signatures", vec![], vec![node("Unmanaged", vec![], vec![signature])])]);
+    let h = hive("SOFTWARE", tree);
+    let (_, out) = run("KnownNetworks", &h, h.root.unwrap());
+    assert_eq!(out.rows.len(), 1);
+    assert_eq!(text_of(&out.rows[0], "NameType"), "Wireless");
+    assert_eq!(text_of(&out.rows[0], "GatewayMacAddress"), "mac");
+    assert_eq!(text_of(&out.rows[0], "FirstNetwork"), "Wifi");
+    assert_eq!(out.errors, ["'Managed' key missing!' "]);
 }

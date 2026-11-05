@@ -5,6 +5,8 @@ mod amcache;
 mod apps;
 mod helpers;
 mod history;
+mod devices;
+mod mru;
 mod network;
 mod shell;
 mod system;
@@ -22,7 +24,13 @@ pub enum Cell {
     Text(Option<String>),
     Bool(bool),
     Int(i32),
+    Long(i64),
+    OptInt(Option<i32>),
     Time(Option<Timestamp>),
+    /// A [Flags] enum: its names in CSV, its number in JSON
+    Flags(String, i32),
+    /// A list of objects: only JSON shows it, written as this JSON
+    JsonOnly(String),
 }
 
 impl From<Option<String>> for Cell {
@@ -55,6 +63,18 @@ impl From<i32> for Cell {
     }
 }
 
+impl From<i64> for Cell {
+    fn from(v: i64) -> Cell {
+        Cell::Long(v)
+    }
+}
+
+impl From<Option<i32>> for Cell {
+    fn from(v: Option<i32>) -> Cell {
+        Cell::OptInt(v)
+    }
+}
+
 impl From<Option<Timestamp>> for Cell {
     fn from(v: Option<Timestamp>) -> Cell {
         Cell::Time(v)
@@ -77,6 +97,10 @@ pub struct ValuesOut {
     pub batch_value_data1: String,
     pub batch_value_data2: Option<String>,
     pub batch_value_data3: Option<String>,
+    /// The class declares BatchKeyPath and BatchValueName before its other properties (UserAssist)
+    pub batch_first: bool,
+    /// BatchValueData1 is null, not empty (DHCPNetworkHint): only the batch JSON shows it
+    pub data1_null: bool,
 }
 
 impl ValuesOut {
@@ -84,13 +108,13 @@ impl ValuesOut {
     /// their place in the class, and CsvHelper sorts them by index: the first column, BatchKeyPath, the second column,
     /// BatchValueName, then the rest.
     fn csv_order(&self) -> impl Iterator<Item = CsvColumn<'_>> {
-        let (first, rest) = self.columns.split_at(self.columns.len().min(2));
+        let (first, rest) = self.columns.split_at(if self.batch_first { 0 } else { self.columns.len().min(2) });
         let mut order = Vec::with_capacity(self.columns.len() + 2);
         order.extend(first.first().map(CsvColumn::Column));
         order.push(CsvColumn::KeyPath);
         order.extend(first.get(1).map(CsvColumn::Column));
         order.push(CsvColumn::ValueName);
-        order.extend(rest.iter().map(CsvColumn::Column));
+        order.extend(rest.iter().filter(|c| !matches!(c.1, Cell::JsonOnly(_))).map(CsvColumn::Column));
         order.into_iter()
     }
 
@@ -120,6 +144,10 @@ impl ValuesOut {
                 CsvColumn::Column((_, Cell::Text(v))) => csv::field(out, v.as_deref().unwrap_or("")),
                 CsvColumn::Column((_, Cell::Bool(v))) => out.push_str(if *v { "True" } else { "False" }),
                 CsvColumn::Column((_, Cell::Int(v))) => out.push_str(&v.to_string()),
+                CsvColumn::Column((_, Cell::Long(v))) => out.push_str(&v.to_string()),
+                CsvColumn::Column((_, Cell::OptInt(v))) => out.push_str(&v.map(|n| n.to_string()).unwrap_or_default()),
+                CsvColumn::Column((_, Cell::Flags(names, _))) => csv::field(out, names),
+                CsvColumn::Column((_, Cell::JsonOnly(_))) => {}
                 CsvColumn::Column((_, Cell::Time(v))) => csv::field(out, &v.map(|t| t.format("yyyy-MM-dd HH:mm:ss.fffffff")).unwrap_or_default()),
             }
         }
@@ -134,6 +162,10 @@ impl ValuesOut {
             };
         }
         let mut o = ServiceStackObject::new();
+        if self.batch_first {
+            text(&mut o, "BatchKeyPath", self.batch_key_path.as_deref());
+            text(&mut o, "BatchValueName", self.batch_value_name.as_deref());
+        }
         for (name, cell) in &self.columns {
             match cell {
                 Cell::Text(v) => text(&mut o, name, v.as_deref()),
@@ -143,6 +175,21 @@ impl ValuesOut {
                 Cell::Int(v) => {
                     o.number(name, v);
                 }
+                Cell::Long(v) => {
+                    o.number(name, v);
+                }
+                Cell::OptInt(Some(v)) => {
+                    o.number(name, v);
+                }
+                Cell::OptInt(None) => {
+                    o.raw(name, "null");
+                }
+                Cell::Flags(_, v) => {
+                    o.number(name, v);
+                }
+                Cell::JsonOnly(v) => {
+                    o.raw(name, v);
+                }
                 Cell::Time(Some(t)) => {
                     o.raw(name, &format!("\"{}\"", t.to_json_string()));
                 }
@@ -151,8 +198,10 @@ impl ValuesOut {
                 }
             }
         }
-        text(&mut o, "BatchKeyPath", self.batch_key_path.as_deref());
-        text(&mut o, "BatchValueName", self.batch_value_name.as_deref());
+        if !self.batch_first {
+            text(&mut o, "BatchKeyPath", self.batch_key_path.as_deref());
+            text(&mut o, "BatchValueName", self.batch_value_name.as_deref());
+        }
         o.finish()
     }
 }
@@ -201,6 +250,7 @@ pub static PLUGINS: &[Plugin] = &[
     plugin("SevenZipFolderHistory", "7-Zip folder history", &[r"Software\7-Zip\FM"], Some("FolderHistory"), history::seven_zip_folder),
     plugin("SevenZip", "7-Zip archive history", &[r"Software\7-Zip\Compression"], Some("ArcHistory"), history::seven_zip_archive),
     plugin("SevenZipPathHistory", "7-Zip extraction path history", &[r"Software\7-Zip\Extraction"], Some("PathHistory"), history::seven_zip_path),
+    plugin("Adobe", "Adobe program information", &[r"Software\Adobe"], None, mru::adobe),
     plugin("AdobeTrustManager", "Adobe User Accessed Websites", &[r"Software\Adobe"], None, apps::adobe_trust_manager),
     plugin("InventoryApplication", "Amcache-InventoryApplication", &[r"ROOT\InventoryApplication"], None, amcache::application),
     plugin("InventoryApplicationFile", "Amcache-InventoryApplicationFile", &[r"ROOT\InventoryApplicationFile"], None, amcache::application_file),
@@ -212,6 +262,7 @@ pub static PLUGINS: &[Plugin] = &[
     plugin("AppCompat", "AppCompatCache", &[r"ControlSet00*\Control\Session Manager\AppCompatCache"], Some("AppCompatCache"), system::app_compat_cache),
     plugin("AppCompatFlags2", "AppCompatFlags2", &[r"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags"], None, apps::app_compat_flags2),
     plugin("AppPaths", "AppPaths", &[r"Microsoft\Windows\CurrentVersion\App Paths", r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"], None, apps::app_paths),
+    plugin("Ares", "Ares P2P information", &[r"Software\Ares"], None, mru::ares),
     plugin(
         "BamDam",
         "BamDam",
@@ -220,11 +271,29 @@ pub static PLUGINS: &[Plugin] = &[
         system::bam_dam,
     ),
     plugin("BluetoothBthPort", "BluetoothBthPort", &[r"ControlSet00*\Services\BTHPORT\Parameters\Devices"], None, system::bluetooth),
+    plugin("CIDSizeMRU", "ComDlg32 CIDSizeMRU", &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\CIDSizeMRU"], None, mru::cid_size_mru),
     plugin("DeviceClasses", "DeviceClasses", &[r"ControlSet00*\Control\DeviceClasses"], None, system::device_classes),
+    plugin("DHCPNetworkHint", "DHCPNetworkHints", &[r"ControlSet00*\Services\Tcpip\Parameters\Interfaces"], None, devices::dhcp_network_hint),
     plugin("DsrmAdminLogonBehaviour", "DsrmAdminLogonBehaviour Value", &[r"ControlSet00*\Control\Lsa"], Some("DsrmAdminLogonBehavior"), system::dsrm),
     plugin("ETW", "ETW", &[r"ControlSet001\Control\WMI\Autologger\EventLog-Application", r"ControlSet001\Control\WMI\Autologger\EventLog-System"], None, system::etw),
     plugin("FeatureUsage", "FeatureUsage", &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage"], None, history::feature_usage),
+    plugin("FileExts", "File Extensions", &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts"], None, mru::file_exts),
+    plugin(
+        "FirewallRules",
+        "FirewallRules",
+        &[
+            r"ControlSet00*\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules",
+            r"ControlSet00*\Services\SharedAccess\Parameters\FirewallPolicy\RestrictedServices\AppIso\FirewallRules",
+            r"ControlSet00*\Services\SharedAccess\Parameters\FirewallPolicy\Mdm\FirewallRules",
+        ],
+        None,
+        devices::firewall_rules,
+    ),
+    plugin("FirstFolder", "First folder", &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\FirstFolder"], None, mru::first_folder),
+    plugin("IconLayouts", "IconLayouts", &[r"Software\Microsoft\Windows\Shell\Bags\1\Desktop"], None, mru::icon_layouts),
     plugin("JumplistData", "JumplistData", &[r"Software\Microsoft\Windows\CurrentVersion\Search\JumplistData"], None, history::jumplist_data),
+    plugin("KnownNetworks", "Known networks", &[r"Microsoft\Windows NT\CurrentVersion\NetworkList"], None, devices::known_networks),
+    plugin("LastVisitedMRU", "ComDlg32 LastVisitedMRU", &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\LastVisitedMRU"], None, mru::last_visited_mru),
     plugin(
         "LastVisitedPidlMRU",
         "ComDlg32 LastVisitedPidlMRU",
@@ -235,10 +304,19 @@ pub static PLUGINS: &[Plugin] = &[
     plugin("NetworkAdapters", "NetworkAdapters", &[r"ControlSet00*\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}"], None, network::adapters),
     plugin("NetworkSettings", "NetworkSettings", &[r"ControlSet00*\Services\Tcpip\Parameters\Interfaces"], None, network::settings),
     plugin("NetworkSetup2", "NetworkSetup2", &[r"ControlSet00*\Control\NetworkSetup2"], None, network::setup2),
+    plugin(
+        "OfficeMRU",
+        "Office MRU",
+        &[r"Software\Microsoft\Office\*\*\User MRU\*\File MRU", r"Software\Microsoft\Office\*\*\User MRU\*\Place MRU", r"Software\Microsoft\Office\*\*\File MRU", r"Software\Microsoft\Office\*\*\Place MRU"],
+        None,
+        mru::office_mru,
+    ),
+    plugin("OpenSaveMRU", "ComDlg32 OpenSaveMRU", &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\OpenSaveMRU"], None, mru::open_save_mru),
     plugin("OpenSavePidlMRU", "ComDlg32 OpenSavePidlMRU", &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\OpenSavePidlMRU"], None, shell::open_save_pidl_mru),
     plugin("Products", "Products", &[r"Microsoft\Windows\CurrentVersion\Installer\UserData\*\Products", r"Classes\Installer\Products"], None, apps::products),
     plugin("ProfileList", "ProfileList", &[r"Microsoft\Windows NT\CurrentVersion\ProfileList"], None, system::profile_list),
     plugin("RADAR", "RADAR", &[r"Microsoft\RADAR\HeapLeakDetection", r"WOW6432Node\Microsoft\RADAR\HeapLeakDetection"], None, apps::radar),
+    plugin("RecentApps", "RecentApps", &[r"Software\Microsoft\Windows\CurrentVersion\Search\RecentApps"], None, mru::recent_apps),
     plugin(
         "RecentDocs",
         "Recent documents",
@@ -247,8 +325,39 @@ pub static PLUGINS: &[Plugin] = &[
         shell::recent_docs,
     ),
     plugin("RunMRU", "RunMRU", &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU"], None, history::run_mru),
+    plugin("SAMBuiltin", "SAMBuiltin", &[r"SAM\Domains\Builtin\Aliases"], None, devices::sam_builtin),
+    plugin("SCSI", "SCSI", &[r"ControlSet00*\Enum\SCSI"], None, devices::scsi),
+    plugin("Services", "Services", &[r"ControlSet00*\Services"], None, devices::services),
+    plugin("SWD", "SWD", &[r"ControlSet00*\Enum\SWD"], None, devices::swd),
+    plugin("SyscacheObjectTable", "Syscache.hve ObjectTable", &[r"DefaultObjectStore\ObjectTable"], None, devices::syscache_object_table),
     plugin("Taskband", "Taskband", &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband"], Some("Favorites"), shell::taskband),
+    plugin(
+        "TaskFlowShellActivities",
+        "Taskflow Shell Activities",
+        &[r"Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\Cache\DefaultAccount\$$windows.data.taskflow.shellactivities\Current"],
+        None,
+        mru::task_flow,
+    ),
     plugin("TerminalServerClient", "TerminalServerClient", &[r"Software\Microsoft\Terminal Server Client"], None, network::terminal_server_client),
+    plugin("TimeZoneInfo", "TimeZoneInformation", &[r"ControlSet00*\Control\TimeZoneInformation"], None, devices::time_zone),
+    plugin(
+        "TrustedDocuments",
+        "TrustedDocuments",
+        &[
+            r"Software\Microsoft\Office\15.0\Word\Security\Trusted Documents\TrustRecords",
+            r"Software\Microsoft\Office\15.0\Excel\Security\Trusted Documents\TrustRecords",
+            r"Software\Microsoft\Office\15.0\PowerPoint\Security\Trusted Documents\TrustRecords",
+            r"Software\Microsoft\Office\15.0\Access\Security\Trusted Documents\TrustRecords",
+            r"Software\Microsoft\Office\15.0\OneNote\Security\Trusted Documents\TrustRecords",
+            r"Software\Microsoft\Office\16.0\Word\Security\Trusted Documents\TrustRecords",
+            r"Software\Microsoft\Office\16.0\Excel\Security\Trusted Documents\TrustRecords",
+            r"Software\Microsoft\Office\16.0\PowerPoint\Security\Trusted Documents\TrustRecords",
+            r"Software\Microsoft\Office\16.0\Access\Security\Trusted Documents\TrustRecords",
+            r"Software\Microsoft\Office\16.0\OneNote\Security\Trusted Documents\TrustRecords",
+        ],
+        None,
+        mru::trusted_documents,
+    ),
     plugin("TypedURLs", "TypedURLs", &[r"Software\Microsoft\Internet Explorer\TypedURLs"], None, history::typed_urls),
     plugin(
         "UnInstall",
@@ -256,6 +365,15 @@ pub static PLUGINS: &[Plugin] = &[
         &[r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", r"Microsoft\Windows\CurrentVersion\Uninstall", r"WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"],
         None,
         apps::uninstall,
+    ),
+    plugin("USB", "USB", &[r"ControlSet00*\Enum\USB"], None, devices::usb),
+    plugin("USBSTOR", "USBSTOR", &[r"ControlSet00*\Enum\USBSTOR"], None, devices::usbstor),
+    plugin(
+        "UserAssist",
+        "UserAssist",
+        &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist", r"Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist\*\Count"],
+        None,
+        mru::user_assist,
     ),
     plugin("VolumeInfoCache", "VolumeInfoCache", &[r"Microsoft\Windows Search\VolumeInfoCache"], None, system::volume_info_cache),
     plugin(
@@ -270,6 +388,7 @@ pub static PLUGINS: &[Plugin] = &[
     ),
     plugin("WindowsPortableDevices", "Windows Portable Devices", &[r"Microsoft\Windows Portable Devices"], None, system::portable_devices),
     plugin("WinRAR", "WinRAR", &[r"Software\WinRAR"], None, history::winrar),
+    plugin("WordWheelQuery", "WordWheelQuery", &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\WordWheelQuery"], None, mru::word_wheel_query),
 ];
 
 /// A key path of a plugin, ready to compare
@@ -386,6 +505,8 @@ mod tests {
             batch_value_data1: String::new(),
             batch_value_data2: None,
             batch_value_data3: None,
+            batch_first: false,
+            data1_null: false,
         };
         assert_eq!(row.csv_header(), "Name,BatchKeyPath,Missing,BatchValueName,On,Position,When");
         let mut line = String::new();

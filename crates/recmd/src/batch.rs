@@ -403,6 +403,8 @@ pub struct Row {
     pub value_name: Option<String>,
     pub value_type: String,
     pub value_data: String,
+    /// ValueData is null: shown as such in JSON
+    pub value_data_null: bool,
     pub value_data2: Option<String>,
     pub value_data3: Option<String>,
     pub comment: Option<String>,
@@ -460,7 +462,8 @@ impl Row {
         null(&mut o, "Category", self.category.as_deref());
         o.string("KeyPath", Some(&self.key_path));
         null(&mut o, "ValueName", self.value_name.as_deref());
-        o.string("ValueType", Some(&self.value_type)).string("ValueData", Some(&self.value_data));
+        o.string("ValueType", Some(&self.value_type));
+        null(&mut o, "ValueData", (!self.value_data_null).then_some(self.value_data.as_str()));
         null(&mut o, "ValueData2", self.value_data2.as_deref());
         null(&mut o, "ValueData3", self.value_data3.as_deref());
         null(&mut o, "Comment", self.comment.as_deref());
@@ -488,6 +491,7 @@ pub fn build_row(hive: &Hive, k: KeyId, key: &BatchKey, value: Option<VkId>, dt:
         }),
         value_type: value.map(|v| hive.vks[v].type_name()).unwrap_or_default(),
         value_data: String::new(),
+        value_data_null: false,
         value_data2: None,
         value_data3: None,
         comment: key.comment.clone(),
@@ -642,6 +646,7 @@ pub fn plugin_row(hive: &Hive, k: KeyId, key: &BatchKey, row: registry_plugins::
         key_path: hive.keys[k].path.clone(),
         value_name: row.batch_value_name,
         value_type: "(plugin)".into(),
+        value_data_null: row.data1_null,
         value_data: row.batch_value_data1,
         value_data2: row.batch_value_data2,
         value_data3: row.batch_value_data3,

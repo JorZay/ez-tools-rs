@@ -78,6 +78,8 @@ pub fn row(
         batch_value_data1: data1,
         batch_value_data2: data2,
         batch_value_data3: data3,
+        batch_first: false,
+        data1_null: false,
     }
 }
 
@@ -126,6 +128,68 @@ pub fn try_parse_u32(s: &str) -> Option<u32> {
         Some(digits) => digits.bytes().all(|c| c == b'0').then_some(0),
         None => t.parse().ok(),
     }
+}
+
+/// uint.Parse
+pub fn parse_u32(s: &str) -> NetResult<u32> {
+    try_parse_u32(s).ok_or_else(|| if integer_text(s).is_some() { "Value was either too large or too small for a UInt32.".to_string() } else { format_error(s) })
+}
+
+/// long.Parse: null throws
+pub fn parse_i64(s: Option<&str>) -> NetResult<i64> {
+    let s = s.ok_or("Value cannot be null. (Parameter 's')")?;
+    let t = integer_text(s).ok_or_else(|| format_error(s))?;
+    t.parse().map_err(|_| "Value was either too large or too small for an Int64.".to_string())
+}
+
+/// int.Parse of what can be null
+pub fn parse_i32_of(s: Option<&str>) -> NetResult<i32> {
+    parse_i32(s.ok_or("Value cannot be null. (Parameter 's')")?)
+}
+
+/// Each UTF-16 unit of an MRUList is one entry: the place of a value with this name
+pub fn mru_of_units(order: &[u16], name: &str) -> i32 {
+    let mut units = name.encode_utf16();
+    match (units.next(), units.next()) {
+        (Some(u), None) => order.iter().position(|o| *o == u).map_or(-1, |p| p as i32),
+        _ => -1,
+    }
+}
+
+/// `Encoding.Unicode.GetString(raw, index, count)`
+pub fn unicode_at(raw: &[u8], index: i64, count: i64) -> NetResult<String> {
+    if index < 0 || count < 0 || index > raw.len() as i64 || count > raw.len() as i64 - index {
+        return Err("Index and count must refer to a location within the buffer. (Parameter 'bytes')".to_string());
+    }
+    Ok(ez_common::net::utf16(&raw[index as usize..(index + count) as usize]))
+}
+
+/// A byte: `raw[index]`
+pub fn byte_at(raw: &[u8], index: i64) -> NetResult<u8> {
+    usize::try_from(index).ok().and_then(|i| raw.get(i)).copied().ok_or_else(|| OUT_OF_BOUNDS.to_string())
+}
+
+/// DateTimeOffset.ToString() in en-US, of a UTC time
+pub fn offset_text(t: Timestamp) -> String {
+    let p = t.parts();
+    let hour = if p.hour % 12 == 0 { 12 } else { p.hour % 12 };
+    format!("{}/{}/{} {hour}:{:02}:{:02}\u{202f}{} +00:00", p.month, p.day, format_args!("{:04}", p.year), p.minute, p.second, if p.hour < 12 { "AM" } else { "PM" })
+}
+
+/// `Convert.ToByte(text, 16)` of two characters
+pub fn hex_byte(text: &[u16]) -> NetResult<u8> {
+    let s = String::from_utf16_lossy(text);
+    let digits = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(&s);
+    if digits.is_empty() && !s.is_empty() {
+        return Ok(0);
+    }
+    if digits.is_empty() || !digits.as_bytes()[0].is_ascii_hexdigit() {
+        return Err("Could not find any recognizable digits.".to_string());
+    }
+    if !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("Additional non-parsable characters are at the end of the string.".to_string());
+    }
+    u8::from_str_radix(digits, 16).map_err(|e| e.to_string())
 }
 
 /// int.Parse
