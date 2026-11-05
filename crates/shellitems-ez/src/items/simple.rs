@@ -438,25 +438,7 @@ pub(super) fn block_at(raw: &[u8], index: i64) -> NetResult<Block> {
     Ok(crate::blocks::from_bytes_or_error(crate::utils::skip(raw, index as usize)))
 }
 
-/// DateTime.FromOADate; the result as a time at offset 0
-pub fn from_oa_date(value: f64) -> NetResult<Timestamp> {
-    const MILLIS_PER_DAY: i64 = 86_400_000;
-    const DOUBLE_DATE_OFFSET_MILLIS: i64 = 59_926_435_200_000;
-    const MAX_MILLIS: i64 = 315_537_897_600_000;
-    let illegal = || "Not a legal OleAut date.".to_string();
-    if value.is_nan() || value >= 2_958_466.0 || value <= -657_435.0 {
-        return Err(illegal());
-    }
-    let mut millis = (value * 86_400_000.0 + if value >= 0.0 { 0.5 } else { -0.5 }) as i64;
-    if millis < 0 {
-        millis -= (millis % MILLIS_PER_DAY) * 2;
-    }
-    millis += DOUBLE_DATE_OFFSET_MILLIS;
-    if !(0..MAX_MILLIS).contains(&millis) {
-        return Err(illegal());
-    }
-    Ok(Timestamp(millis * 10_000))
-}
+pub use ez_common::dotnet::from_oa_date;
 
 /// string.Trim(): white space at both ends
 pub fn net_trim(s: &str) -> String {

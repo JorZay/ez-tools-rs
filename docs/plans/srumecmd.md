@@ -1,92 +1,69 @@
-# Plan: porting SrumECmd to Rust
+# SrumECmd port
 
-Status: planned, not started. One decision is needed first: see "Decisions". Upstream: EricZimmerman/Srum
-`6dbb636b4fe734874c3439e1f0db5cb7dce618ab`.
+Status: done for what can be checked without Windows (2026-11-05), against EricZimmerman/Srum `6dbb636b4fe734874c3439e1f0db5cb7dce618ab`, SrumECmd 2026.10.1. Crates
+`ese-ez`, `srum-ez` and `srumecmd`. **The whole original has never run next to this port:** it stops on anything but Windows, so these results are not the
+same claim as the other tools' byte for byte parity. "Checks" says exactly what was compared with what.
 
 ## What is ported
 
-| Original (C#, EricZimmerman) | Lines | Rust |
-|---|---|---|
-| `SrumData/Srum.cs` (tables, id map, app and SID decoding) | ~2,470 | `srum-ez` |
-| `SrumECmd/Program.cs`, `ConsoleLog`, `TempFolder` | ~870 | `srumecmd` |
-| `EseWorkspace` over ManagedEsent and Windows' `esent.dll` | ~260 + Windows | `ese-ez`, new |
+| Original (C#, EricZimmerman) | Rust |
+|---|---|
+| ManagedEsent and Windows' `esent.dll`, through `EseWorkspace` | `ese-ez`, a reader of its own |
+| `SrumData/Srum.cs`: tables, id map, apps, SIDs, SOFTWARE hive | `srum-ez` |
+| `SrumECmd/Program.cs`, `ConsoleLog` | `srumecmd` |
 
-The original code is small. The work is that it hands all database reading to `esent.dll`, so this port needs its own ESE
-reader. `SumECmd` uses the same `EseWorkspace`, so `ese-ez` makes it cheap afterwards.
-
-Options: `-f`, `-d`, `-r` (SOFTWARE hive, through `registry-ez`), `--csv`, `--dt`, `--temp`, `--debug/--trace`, `--co`.
-
-CSVs, each named `<time>_SrumECmd_<name>_Output.csv`: EnergyUsage, AppTimelineProvider, vfuprov, AppResourceUseInfo,
-NetworkConnections, NetworkUsages, PushNotifications, ProcessorTime, SizeInBytes, TotalUsed, NetworkBytes.
+Options: `-f`, `-d`, `-r`, `--csv`, `--dt`, `--temp`, `--debug/--trace`, `--co`. CSVs: `<time>_SrumECmd_<name>_Output.csv`, with a byte order mark, for EnergyUsage,
+AppTimelineProvider, vfuprov, AppResourceUseInfo, NetworkConnections, NetworkUsages and PushNotifications always, and ProcessorTime, SizeInBytes, TotalUsed and
+NetworkBytes when they have rows.
 
 ## The ESE reader
 
-What exists, checked 2026-11-04:
+`ese-ez` reads the header, the catalog (`MSysObjects`, page 4), each table's B-tree in key order, and fixed, variable and tagged columns. It is read-only and takes the
+file as it is. Every offset is checked, so damage is an error and not a panic. Deleted records are skipped, as ESE does.
 
-| Option | Reads | Replays logs | Notes |
-|---|---|---|---|
-| `esent.dll` (the original) | everything | yes | Windows only |
-| `libesedb` (C bindings) | most | no | LGPL-3.0, not pure Rust |
-| `ese-parser` 0.1 | pages only | no | no B-tree walk yet |
-| `ese-core` 0.2.2 (under `srum-parser`) | catalog, B-tree, fixed, variable and tagged columns | no | Apache-2.0; no long value or compression code found |
-| Own `ese-ez` | what SRUM and SUM need | to be written | same design as the other crates |
+Left out on purpose, because no database here has them, so code for them couldn't be tested. Each gives a row error naming the column, and the rest is read:
 
-**Recommendation: write `ese-ez`**, with `ese-core` and libesedb's documentation of the format as guides, and libesedb's
-`esedbexport` as an independent cross-check. `ese-core` alone doesn't cover long values or compression, which SRUM's blob
-columns may need, and this project keeps damaged input handling and error messages under its own control. Depending on a
-young crate for the hardest part of the tool, then having to patch it, seems the worse trade.
+- **Long values** (separate trees for values too large for a page).
+- **Compressed values** (7-bit and Xpress).
+- **Values with several parts** (multi-valued tagged columns).
 
-## Steps
+`SumECmd`'s databases may need them, which would be the time to add them, with real samples to check against. Across the 12 databases below, about 3.8 million
+rows, none of the three occurs and no table has a long value tree.
 
-1. **`ese-ez`, clean databases.** Header (with what `esentutl /mh` shows: state and versions), pages for each format version,
-   the catalog, B-tree walk, fixed, variable and tagged columns, long values, compressed columns. Every page and record is
-   bounds checked: damage is reported and the rest is read.
-2. **`srum-ez`.** `SruDbIdMapTable` (types 0 to 4, `AppInfo`, SIDs), then each provider, column by column, with `ParseErrors`
-   and `Warnings` as in the original. Optional SOFTWARE hive for user and Wi-Fi profile names.
-3. **`srumecmd`.** Options, console, CSVs with the classes' column order.
-4. **`ese-ez`, log replay.** Replay `SRU*.log` into a copy for dirty databases. This is the largest unknown: the log format
-   is the least documented part of ESE. Copies only, never next to the evidence, as in the original.
-5. **Docs and parity script.**
-
-Steps 1 to 3 give a tool that handles every clean database, and they are worth committing alone.
+Also not done: page checksums aren't verified, and pages of 16 KB and more are handled by what's known of the format but have no sample; all databases here have 4 KB pages.
 
 ## Checks
 
-**The original can't run here.** It stops on anything but Windows ("Non-Windows platforms not supported"), and its tests need
-Windows too, so there is no reference on this machine and no parity like the other tools have without a Windows system.
+| Check | Against | Size | Result |
+|---|---|---|---|
+| Row counts per table | Upstream's `SampleTests`, on the public DFIR Artifact Museum samples | 9 samples, 7 tables each | All equal |
+| Exact values on Server 2022 (the newer tables) | The same tests | 1 sample | All equal |
+| Dirty and clean copies of one database | Each other | 3 pairs (the header of one "dirty" copy says clean) | Identical CSVs |
+| CSV format: each row rebuilt with `SrumData`'s classes and written by `CsvHelper` with `ExportCsv`'s maps | The original's code, without `esent.dll` | 67 files and 20,068 sample rows; 39 files and 1,551,247 real rows | Identical |
+| Id map: `AppInfo`, SID text, SID types | The original's classes | All entries of 9 samples | Identical |
+| SOFTWARE hive: user names by SID | The original's `ReadSoftwareHive`, by reflection | 6 real hives, 94 users | Identical |
+| Real KAPE extractions | Sense: dates, names, the databases not changed by reading (SHA-256) | 5 databases | No read problems; dates fit; unchanged |
+| Damage: random bytes, page fields and truncation | No panic, no hang | 300 runs | None |
 
-Without one, these remain:
+What this shows and doesn't:
 
-- **Row counts from upstream's `SampleTests`:** 9 DFIR Artifact Museum samples (MIT; Windows 10, 11 and Server 2022), with the
-  expected count per table, and some exact values for Server 2022.
-- **Clean and dirty pairs:** the same database, clean and dirty, for 3 of the systems. After replay, the two must give the
-  same output, which tests replay without needing Windows.
-- **`esedbexport`:** table contents compared with `ese-ez` on the samples, for an independent reader.
-- **Damage:** samples with bytes flipped and truncated: no panics, and what can be read still comes out.
+- **The format of the CSVs is the original's own**, because its code wrote the comparison file. What goes into them is only compared by counts, the exact Server 2022 values and clean and dirty pairs.
+- **No independent reader was compared value by value.** `libesedb` would be one; installing it was blocked in the environment this was written in. With a Windows machine, running the original on these databases would settle it: it is the check still to do.
+- **Wi-Fi profile names** went untested on real data: none of the 6 hives has any.
+- **Windows 8** databases went untested: the samples and extractions are Windows 10, 11 and Server.
 
-These prove the data is read correctly, but not that CSVs are byte-identical to the original, as formatting choices and
-messages can't be compared.
+## Differences from the original
 
-## Risks
+- **No log replay and no repair.** The original copies the database, replays `SRU*.log` into the copy, and repairs it with `esentutl /p` if that fails. This reads the file as it is, and warns if its state isn't Clean Shutdown. On the samples whose state really is dirty (2), nothing is lost, as their clean twins show. A database whose newest pages are only in its logs would lack those rows: run `esentutl /r` on Windows first if that matters. The ESE log format isn't documented, and a replay couldn't be checked here.
+- **`--temp` is accepted and ignored.** Nothing is copied, and nothing is written next to the database.
+- **`-d`** follows the Windows (net472) build: non-empty files only, and no folder or link is taken for a database. Folders are read in name order, as NTFS gives them, so the same database is found first.
+- **The console:** `-d`'s line shows the format version from the header, where the original runs `esentutl /mh`. Messages about the copy and the repair don't apply. An unexpected column size has this port's own wording.
+- **The local time zone:** the original takes an ESE time as local in EnergyUsage, which only shows with an offset in `--dt` on a machine not on UTC.
+- **Memory:** about 1 GB for a 120 MB database with 350,000 rows, as all rows are kept until they are written.
+- **The console log's name** has this port's version, as in the other tools.
 
-- **Log replay** might turn out to be too large or too unreliable. Fallback: read the database as it is, with a warning, and
-  document that `esentutl /r` on Windows should be run first.
-- **`esentutl /p` repair** of a dirty database without logs won't be ported: it is a Windows tool that rewrites the database. The
-  port reads what it can and says so. Its output will differ from the original's on those files.
-- **Format versions:** ESE's page and record formats vary with the Windows version, and the samples only cover Windows 10, 11
-  and Server 2022, so Windows 8 goes untested.
-- **Compression:** the samples will show which columns use it. If none do, it's still needed for other systems, without samples.
+## Comparison harnesses
 
-## Decisions
-
-1. **Can you provide a Windows machine or VM?** This decides how far the checks can go. With one, the original can be run on
-   the samples, and I can compare byte for byte; `.NET` on Windows would also give the exact messages. Without one, the
-   checks above are what's possible, and that would be stated as a limit of this port. Recommended: yes, if it's available.
-2. **Own `ese-ez`, as recommended above?**
-3. **Is log replay in scope?** Recommended: yes, but after the clean path works, with the fallback above if it fails.
-
-## Order
-
-LECmd first (`docs/plans/lecmd.md`): it has a reference here and unlocks JLECmd, SBECmd and RECmd's shell item plugins, while
-this tool waits on decision 1 and carries the largest unknown. SrumECmd can start right after, or in parallel if you need
-the exfiltration evidence sooner. It ranks 8th to LECmd's 9th.
+Not in this repository, as they use the original's assemblies: two small .NET programs reference `reference-builds/SrumECmd/SrumData.dll`, rebuild rows with its
+classes and print how it reads the id map (`crates/srum-ez/examples/dump_id_map.rs` prints the same from this port). Use `--dt "yyyy-MM-dd HH:mm:ss.fffffff"`, so
+each time can be read back whole.

@@ -260,3 +260,23 @@ mod tests {
         assert_eq!(n0(1234567), "1,234,567");
     }
 }
+
+/// DateTime.FromOADate; the result as a time at offset 0
+pub fn from_oa_date(value: f64) -> Result<crate::Timestamp, String> {
+    const MILLIS_PER_DAY: i64 = 86_400_000;
+    const DOUBLE_DATE_OFFSET_MILLIS: i64 = 59_926_435_200_000;
+    const MAX_MILLIS: i64 = 315_537_897_600_000;
+    let illegal = || "Not a legal OleAut date.".to_string();
+    if value.is_nan() || value >= 2_958_466.0 || value <= -657_435.0 {
+        return Err(illegal());
+    }
+    let mut millis = (value * 86_400_000.0 + if value >= 0.0 { 0.5 } else { -0.5 }) as i64;
+    if millis < 0 {
+        millis -= (millis % MILLIS_PER_DAY) * 2;
+    }
+    millis += DOUBLE_DATE_OFFSET_MILLIS;
+    if !(0..MAX_MILLIS).contains(&millis) {
+        return Err(illegal());
+    }
+    Ok(crate::Timestamp(millis * 10_000))
+}
