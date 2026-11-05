@@ -1,15 +1,18 @@
 //! Decoders for specific registry keys, as Eric Zimmerman's RegistryPlugins read them for RECmd. Nothing is printed and
 //! no file is written: a plugin gives rows, errors and the messages of the libraries it uses, and its host reports them.
 
+mod accounts;
 mod amcache;
 mod apps;
+mod devices;
+mod execution;
 mod helpers;
 mod history;
-mod devices;
 mod mru;
 mod network;
 mod shell;
 mod system;
+mod uwp_settings;
 
 use ez_common::json::ServiceStackObject;
 use ez_common::net::NetResult;
@@ -106,14 +109,20 @@ pub struct ValuesOut {
 impl ValuesOut {
     /// The columns' order in the plugin's CSV. RECmd gives BatchKeyPath index 0 and BatchValueName index 1, the others keep
     /// their place in the class, and CsvHelper sorts them by index: the first column, BatchKeyPath, the second column,
-    /// BatchValueName, then the rest.
+    /// BatchValueName, then the rest. That sort (List.Sort) only keeps ties in order up to 16 items: in the one class with
+    /// more, UserAccounts' 31, BatchValueName comes before the second column.
     fn csv_order(&self) -> impl Iterator<Item = CsvColumn<'_>> {
         let (first, rest) = self.columns.split_at(if self.batch_first { 0 } else { self.columns.len().min(2) });
         let mut order = Vec::with_capacity(self.columns.len() + 2);
         order.extend(first.first().map(CsvColumn::Column));
         order.push(CsvColumn::KeyPath);
-        order.extend(first.get(1).map(CsvColumn::Column));
-        order.push(CsvColumn::ValueName);
+        if self.columns.len() + 2 > 16 {
+            order.push(CsvColumn::ValueName);
+            order.extend(first.get(1).map(CsvColumn::Column));
+        } else {
+            order.extend(first.get(1).map(CsvColumn::Column));
+            order.push(CsvColumn::ValueName);
+        }
         order.extend(rest.iter().filter(|c| !matches!(c.1, Cell::JsonOnly(_))).map(CsvColumn::Column));
         order.into_iter()
     }
@@ -260,7 +269,15 @@ pub static PLUGINS: &[Plugin] = &[
     plugin("InventoryDriverBinary", "Amcache-InventoryDriverBinary", &[r"ROOT\InventoryDriverBinary"], None, amcache::driver_binary),
     plugin("Mare", "Amcache-Mare", &[r"Root\Mare"], None, amcache::mare),
     plugin("AppCompat", "AppCompatCache", &[r"ControlSet00*\Control\Session Manager\AppCompatCache"], Some("AppCompatCache"), system::app_compat_cache),
+    plugin("AppCompatFlags", "AppCompatFlags", &[r"Microsoft\Windows NT\CurrentVersion\AppCompatFlags\CIT\System"], None, execution::app_compat_flags),
     plugin("AppCompatFlags2", "AppCompatFlags2", &[r"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags"], None, apps::app_compat_flags2),
+    plugin(
+        "ApplicationSettingsContainer",
+        "ApplicationSettingsContainer",
+        &[r"LocalState", r"RoamingState", r"LocalState\*", r"RoamingState\*"],
+        None,
+        uwp_settings::application_settings_container,
+    ),
     plugin("AppPaths", "AppPaths", &[r"Microsoft\Windows\CurrentVersion\App Paths", r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"], None, apps::app_paths),
     plugin("Ares", "Ares P2P information", &[r"Software\Ares"], None, mru::ares),
     plugin(
@@ -325,12 +342,14 @@ pub static PLUGINS: &[Plugin] = &[
         shell::recent_docs,
     ),
     plugin("RunMRU", "RunMRU", &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU"], None, history::run_mru),
+    plugin("UserAccounts", "User accounts", &[r"SAM\Domains\Account\Users"], None, accounts::user_accounts),
     plugin("SAMBuiltin", "SAMBuiltin", &[r"SAM\Domains\Builtin\Aliases"], None, devices::sam_builtin),
     plugin("SCSI", "SCSI", &[r"ControlSet00*\Enum\SCSI"], None, devices::scsi),
     plugin("Services", "Services", &[r"ControlSet00*\Services"], None, devices::services),
     plugin("SWD", "SWD", &[r"ControlSet00*\Enum\SWD"], None, devices::swd),
     plugin("SyscacheObjectTable", "Syscache.hve ObjectTable", &[r"DefaultObjectStore\ObjectTable"], None, devices::syscache_object_table),
     plugin("Taskband", "Taskband", &[r"Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband"], Some("Favorites"), shell::taskband),
+    plugin("TaskCache", "TaskCache", &[r"Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tasks"], None, execution::task_cache),
     plugin(
         "TaskFlowShellActivities",
         "Taskflow Shell Activities",

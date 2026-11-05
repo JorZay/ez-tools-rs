@@ -148,12 +148,12 @@ fn text(out: &Output, row: usize, column: &str) -> Option<String> {
 const FILETIME: u64 = 132_900_000_000_000_000;
 
 #[test]
-fn table_has_the_65_plugins_once_each() {
+fn table_has_the_69_plugins_once_each() {
     let mut names: Vec<_> = PLUGINS.iter().map(|p| p.type_name).collect();
-    assert_eq!(names.len(), 65);
+    assert_eq!(names.len(), 69);
     names.sort_unstable();
     names.dedup();
-    assert_eq!(names.len(), 65);
+    assert_eq!(names.len(), 69);
 }
 
 #[test]
@@ -514,4 +514,55 @@ fn known_networks_merge_signatures_into_profiles_and_keep_rows_without_them() {
     assert_eq!(text_of(&out.rows[0], "GatewayMacAddress"), "mac");
     assert_eq!(text_of(&out.rows[0], "FirstNetwork"), "Wifi");
     assert_eq!(out.errors, ["'Managed' key missing!' "]);
+}
+
+fn filetime_bytes() -> Vec<u8> {
+    132_900_000_000_000_000u64.to_le_bytes().to_vec()
+}
+
+#[test]
+fn task_cache_lists_a_short_dynamic_info_as_an_error_and_goes_on() {
+    let mut info = vec![0u8; 0x24];
+    info[4..12].copy_from_slice(&filetime_bytes());
+    let tree = node(
+        "ROOT",
+        vec![],
+        vec![node(
+            "Tasks",
+            vec![],
+            vec![
+                node("{bad}", vec![("DynamicInfo", Data::Binary(vec![1, 2]))], vec![]),
+                node("{no info}", vec![("Path", Data::Text("p"))], vec![]),
+                node("{good}", vec![("Path", Data::Text("\\t")), ("DynamicInfo", Data::Binary(info))], vec![]),
+            ],
+        )],
+    );
+    let hive = hive("SOFTWARE", tree);
+    let key = hive.get_key("Tasks").unwrap();
+    let (result, out) = run("TaskCache", &hive, key);
+    assert!(result.is_ok());
+    assert_eq!(out.errors, ["Error processing TaskCache key '{bad}': DynamicInfo has 2 bytes, not at least 28"]);
+    assert_eq!(out.rows.len(), 1);
+    assert_eq!(out.rows[0].batch_value_data3.as_deref(), Some("Path: \\t, Command: , Arguments: "));
+}
+
+#[test]
+fn user_accounts_needs_the_names_key_and_writes_value_name_as_third_column() {
+    let hive_without = hive("SAM", node("ROOT", vec![], vec![node("Users", vec![], vec![])]));
+    let (result, out) = run("UserAccounts", &hive_without, hive_without.get_key("Users").unwrap());
+    assert!(result.is_ok());
+    assert!(out.rows.is_empty() && out.errors.is_empty());
+
+    let columns = (0..29).map(|_| ("C", Cell::Int(0))).collect();
+    let row = registry_plugins::ValuesOut {
+        columns,
+        batch_key_path: None,
+        batch_value_name: None,
+        batch_value_data1: String::new(),
+        batch_value_data2: None,
+        batch_value_data3: None,
+        batch_first: false,
+        data1_null: false,
+    };
+    assert!(row.csv_header().starts_with("C,BatchKeyPath,BatchValueName,C,C"));
 }

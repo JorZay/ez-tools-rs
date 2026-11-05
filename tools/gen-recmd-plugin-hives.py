@@ -387,6 +387,218 @@ if SAMPLES:
         r = random.Random(1000 + seed)
         for name, (internal, spec) in {'nt/NTUSER.DAT': ('ntuser.dat', M_NTUSER), 'sy/SYSTEM': ('SYSTEM', SYS_MEDIUM), 'sw/SOFTWARE': ('SOFTWARE', SW_MEDIUM), 'sa/SAM': ('SAM', SAM), 'sc/Syscache.hve': ('Syscache.hve', SYSCACHE)}.items():
             EXTRA_HIVES[f'md{seed}/{name}'] = (internal, mutated(spec, r))
+# ---- the large plugins: ApplicationSettingsContainer, SAM's UserAccounts, TaskCache, AppCompatFlags ----
+FTB = struct.pack('<Q', FT)
+f32 = lambda *v: struct.pack(f'<{len(v)}f', *v)
+f64 = lambda *v: struct.pack(f'<{len(v)}d', *v)
+G1 = bytes(range(16))
+GOOD_UWP = {
+ 257: b'\xAB', 258: struct.pack('<h', -2), 259: struct.pack('<H', 65534), 260: struct.pack('<i', -3), 261: struct.pack('<I', 0xFFFFFFFD),
+ 262: struct.pack('<q', -4), 263: struct.pack('<Q', 2**64 - 4), 264: f32(1.5), 265: f64(0.1), 266: 'é'.encode('utf-16-le'), 267: b'\1',
+ 268: 'héllo,"x"'.encode('utf-16-le') + b'\0\0', 269: b'\1\2\3', 270: struct.pack('<q', FT), 271: struct.pack('<q', 1234567890123), 272: G1,
+ 273: f32(1.9, -2.9), 274: f32(3.5, 4.5), 275: f32(1, 2, 3, 4), 276: b'\xFF\0\x10', 277: struct.pack('<3h', -1, 0, 1), 278: struct.pack('<2H', 1, 65535),
+ 279: struct.pack('<2i', -1, 7), 280: struct.pack('<2I', 1, 0xFFFFFFFF), 281: struct.pack('<2q', -1, 9), 282: struct.pack('<2Q', 1, 2**64 - 1),
+ 283: f32(1.5, -0.25, 1e30), 284: f64(1e300, -2.5), 285: 'aé'.encode('utf-16-le'), 286: b'\1\0\2',
+ 287: b''.join(struct.pack('<i', len(t) * 2 + 2) + t.encode('utf-16-le') + b'\0\0' for t in ('one', '', 'th,ree')),
+ 288: struct.pack('<2q', FT, 5), 289: struct.pack('<2q', -864000000001, 600000000), 290: G1 + G1[::-1], 291: f32(1, 2, 3, 4), 292: f32(5, 6, 7, 8), 293: f32(*range(1, 9)) + f32(*range(9, 17)),
+}
+inf, nan = float('inf'), float('nan')
+ODD_UWP = {  # edge values that still parse: each as (type, payload)
+ 'nan': (264, f32(nan)), 'pinf': (264, f32(inf)), 'ninf': (264, f32(-inf)), 'negzero': (264, f32(-0.0)), 'small': (264, f32(1e-40)), 'big': (264, f32(3.4e38)),
+ 'dnan': (265, f64(nan)), 'dinf': (265, f64(-inf)), 'dbig': (265, f64(1.7e308)), 'dsmall': (265, f64(5e-324)), 'dint': (265, f64(1e15)), 'dint2': (265, f64(1e16)),
+ 'surrogate': (266, b'\x00\xD8'), 'nul': (266, b'\0\0'), 'false': (267, b'\0'), 'bool2': (267, b'\x7F'),
+ 'empty_string': (268, b'\0\0'), 'tsmin': (271, struct.pack('<q', -2**63)), 'tsmax': (271, struct.pack('<q', 2**63 - 1)), 'tsday': (271, struct.pack('<q', 864000000000)),
+ 'ptnan': (273, f32(nan, inf)), 'ptbig': (273, f32(-1e20, 1e20)), 'sznan': (274, f32(-inf, nan)), 'rctbig': (275, f32(1e20, -1e20, nan, inf)),
+ 'empty_b': (276, b''), 'empty_i16': (277, b''), 'empty_comp': (269, b''), 'empty_rect': (293, b''), 'empty_str': (287, b''), 'odd_i16': (277, b'\1\2\3'), 'odd_rect': (293, f32(1, 2, 3)),
+ 'surr_arr': (285, b'\x00\xD8\x41\0\x00\xDC'), 'sgl_arr': (283, f32(nan, inf, -inf)), 'dbl_arr': (284, f64(nan, inf)), 'str_nonul': (287, struct.pack('<i', 2) + b'\0\0'), 'str_odd': (287, struct.pack('<i', 5) + b'a\0b\0\0'),
+ 'type_256': (256, b'\1' + FTB), 'type_294': (294, b'\1' + FTB),
+}
+def uwp_key(t, payload, stamp=FTB): return rv((f'v{t}', (t, payload + stamp)))
+SETTINGS = {'LocalState': {**rv(*[(f't{t}', (t, d + FTB)) for t, d in sorted(GOOD_UWP.items())]), 'sub': {**rv(('s', (260, struct.pack('<i', 5) + FTB))), 'deep': rv(('d', (268, b'a\0\0\0' + FTB)))}},
+ 'RoamingState': {**rv(('r', (267, b'\1' + FTB)), ('plain', S('ignored')), ('(n,ame)', (268, b'\0\0' + FTB))), 'x': rv(('y', (257, b'\1' + FTB)))}, 'Other': rv(('o', (257, b'\1' + FTB)))}
+SETTINGS_ODD = {'LocalState': {**{k: rv((k, (t, d + FTB))) for k, (t, d) in ODD_UWP.items()}}}
+# one key per damaged value, as the first failure ends a key's list
+bad = {}
+for t, d in GOOD_UWP.items():
+    full = d + FTB
+    bad[f'cut{t}'] = rv(('a', (t, full[:-1])))
+    bad[f'nostamp{t}'] = rv(('a', (t, d)))
+    bad[f'empty{t}'] = rv(('a', (t, b'')))
+    bad[f'tiny{t}'] = rv(('a', (t, b'\1')))
+    bad[f'res{t}'] = rv(('a', (t, b'\1\2\3\4')))
+    bad[f'neg{t}'] = rv(('a', (t, d + struct.pack('<q', -1))), ('after', (257, b'\1' + FTB)))
+    bad[f'big{t}'] = rv(('before', (257, b'\1' + FTB)), ('a', (t, d + struct.pack('<q', 2**63 - 1))))
+bad['str_neg'] = rv(('a', (287, struct.pack('<i', -4) + FTB)))
+bad['str_past'] = rv(('a', (287, struct.pack('<i', 400) + b'a\0' + FTB)))
+bad['str_short'] = rv(('a', (287, struct.pack('<i', 1) + FTB)))
+bad['str_zero'] = rv(('a', (287, struct.pack('<i', 0) + FTB)))
+bad['string_nonul'] = rv(('a', (268, b'a\0b\0c\0')))
+bad['string_odd'] = rv(('a', (268, b'a\0b')))
+SETTINGS_BAD = {'LocalState': bad}
+
+def fval(rid=500, login=FT, pw=FT, expires=2**63 - 1, incorrect=0, flags=0x210, bad=0, total=3, size=0x50):
+    f = bytearray(max(size, 0x50))
+    struct.pack_into('<q', f, 8, login); struct.pack_into('<q', f, 0x18, pw); struct.pack_into('<q', f, 0x20, expires); struct.pack_into('<q', f, 0x28, incorrect)
+    struct.pack_into('<i', f, 0x30, rid); struct.pack_into('<H', f, 0x38, flags & 0xFFFF); struct.pack_into('<h', f, 0x40, bad); struct.pack_into('<h', f, 0x42, total)
+    return B(bytes(f[:size]))
+def vval(name='admin', full='Full, "Name"', comment='cmt', user_comment='ucmt', home='C:\\Users\\x'):
+    h = bytearray(0xCC); body = b''
+    for at, t in ((0xC, name), (0x18, full), (0x24, comment), (0x30, user_comment), (0x48, home)):
+        e = t.encode('utf-16-le'); struct.pack_into('<ii', h, at, len(body), len(e)); body += e
+    return B(bytes(h) + body)
+def patched(v, at, *ints):
+    b = bytearray(v[1]); struct.pack_into(f'<{len(ints)}i', b, at, *ints); return B(bytes(b))
+CSID = bytes.fromhex('010400000000000515000000') + struct.pack('<3I', 11, 22, 33)
+usid = lambda rid, base=(11, 22, 33): bytes.fromhex('010500000000000515000000') + struct.pack('<4I', *base, rid)
+NAMES = {'Administrator': rv(('', (500, b''))), 'Guest': rv(('', (501, b''))), 'alice': rv(('', (1001, b''))), 'bob': rv(('', (1002, b''))), 'dupe': rv(('', (1001, b''))), 'none': {}, 'big': rv(('', (0x1003, b''))), 'zero': rv(('', (0, b'')))}
+USERS = {
+ 'Names': NAMES,
+ '000001F4': rv(('F', fval(500)), ('V', vval('Administrator')), ('UserPasswordHint', B('hint'.encode('utf-16-le'))), ('InternetUserName', B('a@b.c'.encode('utf-16-le'))), ('ResetData', B('{"x":1}'.encode('utf-16-le') + b'\0\0'))),
+ '000001F5': rv(('F', fval(501, flags=0x215, login=0, pw=0, bad=2, total=-1)), ('V', vval('Guest', '', '', '', ''))),
+ '000003e9': rv(('F', fval(1001, flags=0x0, expires=FT, incorrect=FT + 5)), ('V', vval('alice'))),
+ '  3EA  ': rv(('F', fval(1002, flags=0x800)), ('V', vval('bob'))),
+ '0000000000003EB': rv(('F', fval(1001, flags=0x8000)), ('V', vval('wrongid'))),
+ 'FFFFFFFF': rv(('F', fval(-1, flags=0xFFFF)), ('V', vval('negative'))),
+ '123456789': rv(('F', fval(1001)), ('V', vval('toolong'))),
+ 'zz': rv(('F', fval(1001)), ('V', vval('nothex'))),
+ '-1': rv(('F', fval(1001)), ('V', vval('sign'))),
+ '000003F0': rv(('F', fval(1000)), ('V', vval('norid'))),
+ '000003F1': rv(('F', fval(1001, login=-1)), ('V', vval('badlogin'))),
+ '000003F2': rv(('F', fval(1001, pw=2**63 - 1)), ('V', vval('badpw'))),
+ '000003F3': rv(('F', fval(1001, expires=-1, incorrect=-1)), ('V', vval('badincorrect'))),
+ '000003F4': rv(('F', fval(1001, expires=-1)), ('V', vval('badexpires'))),
+ '000003F5': rv(('F', fval(1001, size=0x43)), ('V', vval('shortf'))),
+ '000003F6': rv(('F', fval(1001, size=0x44)), ('V', vval('exactf'))),
+ '000003F7': rv(('F', B(b'')), ('V', vval('emptyf'))),
+ '000003F8': rv(('V', vval('nof_rid0'))),
+ '000003F9': rv(('F', fval(1001))),
+ '000003FA': {},
+ '000003FB': rv(('F', fval(1001)), ('V', B(b'\1\2'))),
+ '000003FC': rv(('F', fval(1001)), ('V', patched(vval('badname'), 0xC, 100000, 4))),
+ '000003FD': rv(('F', fval(1001)), ('V', patched(vval('neglen'), 0x10, -2))),
+ '000003FE': rv(('F', fval(1001)), ('V', patched(vval('maxoff'), 0xC, 0x7FFFFFFF, 2))),
+ '000003FF': rv(('F', fval(1001)), ('V', patched(vval('badhome'), 0x4C, 99999))),
+ '00000400': rv(('F', fval(1001)), ('V', vval('oddhint')), ('UserPasswordHint', B(b'a\0b')), ('InternetUserName', B(b'\0\xD8')), ('ResetData', B(b''))),
+ '00001003': rv(('F', fval(0x1003)), ('V', vval('bigrid'))),
+ '00000401': rv(('F', fval(0x1003 & 0xFFF)), ('V', vval('maskedrid'))),
+}
+def group(name, comment, sids, count=None):
+    a = alias(name, comment, *sids)
+    return B(a[1]) if count is None else patched(a, 0x30, count)
+ALIASES = {
+ '00000220': rv(('C', group('Administrators', 'Admins', [usid(500), SID1, usid(1001)]))), '00000221': rv(('C', group('Users', 'U', [usid(1001), usid(1002), usid(1001, (9, 9, 9))]))),
+ '00000222': rv(('C', group('Empty', 'x', []))), '00000223': rv(('C', B(b'\1\2'))), '00000224': rv(('C', group('Cut', 'x', [usid(1001)[:10]]))), '00000225': rv(('C', group('NotSid', 'x', [b'\2\0\0\0' + b'\0' * 8, usid(1001)]))),
+ '00000226': rv(('C', group('Over', 'x', [usid(500)], 3))), '00000227': rv(('C', group('Neg', 'x', [usid(500)], -1))), '00000228': rv(('C', patched(group('BadName', 'x', [usid(500)]), 0x14, 99999))), '00000229': rv(('C', patched(group('BadDesc', 'x', [usid(500)]), 0x20, -2))),
+ '0000022A': rv(('other', D(1))), 'Names': {'Administrators': {}}, '0000022B': rv(('C', group('Other500', 'x', [usid(500, (7, 7, 7))]))),
+}
+ACCOUNT_V = lambda sid: B(b'\0' * 40 + sid)
+def sam(account_v=ACCOUNT_V(CSID), users=USERS, builtin=ALIASES, local={'00000400': rv(('C', group('Local', 'l', [usid(1002)])))}):
+    account = {'Users': users, 'Aliases': local}
+    if account_v is not None: account['=V'] = account_v
+    d = {'Account': account}
+    if builtin is not None: d['Builtin'] = {'Aliases': builtin}
+    return {'SAM': {'Domains': d}}
+SAM_LARGE = {
+ 'normal': sam(), 'nosid': sam(None), 'shortsid': sam(B(b'\1' * 23)), 'badsid': sam(ACCOUNT_V(b'\2' + CSID[1:])), 'badsid2': sam(ACCOUNT_V(CSID[:8] + b'\x16\0\0\0' + CSID[12:])), 'exactsid': sam(B(CSID)),
+ 'noaliases': sam(builtin=None, local={}), 'nonames': sam(users={k: v for k, v in USERS.items() if k != 'Names'}), 'emptyusers': sam(users={'Names': {}}), 'names_only': sam(users={'Names': NAMES}),
+}
+SAM_LARGE['nosid_neg'] = sam(None, users={'Names': {'n': rv(('', (0xFFF, b'')))}, 'FFFFFFFF': rv(('F', fval(4095)), ('V', vval('x')))}, builtin={'1': rv(('C', group('G', 'x', [usid(4095), usid(4095, (1, 1, 1))])))})
+
+def lz_compress(data):
+    out = bytearray()
+    for start in range(0, len(data), 4096):
+        chunk = data[start:start + 4096]; body = bytearray(); i = 0
+        while i < len(chunk):
+            flags = 0; group_ = bytearray()
+            for bit in range(8):
+                if i >= len(chunk): break
+                bits = 12; w = i - 1
+                while w >= 0x10: bits -= 1; w >>= 1
+                maxd, maxl = 1 << (16 - bits), (1 << bits) + 2
+                best, bd = 0, 0
+                for d in range(1, min(i, maxd) + 1):
+                    l = 0
+                    while l < maxl and i + l < len(chunk) and chunk[i + l - d] == chunk[i + l]: l += 1
+                    if l > best: best, bd = l, d
+                if best >= 3:
+                    flags |= 1 << bit; group_ += struct.pack('<H', ((bd - 1) << bits) | (best - 3)); i += best
+                else:
+                    group_.append(chunk[i]); i += 1
+            body.append(flags); body += group_
+        if len(body) < len(chunk):
+            out += struct.pack('<H', 0xB000 | (len(body) - 1)) + body
+        else:
+            out += struct.pack('<H', 0x3000 | (len(chunk) - 1)) + chunk
+    return bytes(out)
+def cit(text, comp=None, decomp=None, tail=b''):
+    d = text.encode('utf-16-le') if isinstance(text, str) else text
+    c = lz_compress(d)
+    return B(struct.pack('<ii', len(c) if comp is None else comp, len(d) if decomp is None else decomp) + c + tail)
+EXES = '\0'.join(f'\\DEVICE\\HARDDISKVOLUME2\\WINDOWS\\SYSTEM32\\PROGRAM{i}.EXE' for i in range(400)) + '\0'
+CIT_PATH = 'Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\CIT\\System'
+CIT_VALUES = rv(
+ ('small', cit('\\DEVICE\\A\\B.EXE\0short\0\\DEVICE\\C,"é"中😀.EXE\0')), ('junkfirst', cit('junk\0\\DEVICE\\A.EXE\0')), ('nodev', cit('C:\\windows\\a.exe\0')), ('many', cit(EXES)), ('exact8', cit('\\DEV4567\0\\DEV456\0')),
+ ('uncompressed', B(struct.pack('<ii', 0x24, 0x22) + struct.pack('<H', 0x3000 | 0x21) + '\\DEVICE\\ABCDEFGHIJKLMNOP'.encode('utf-16-le')[:0x22])),
+ ('oddsize', cit('\\DEVICE\\A\\B.EXE\0x'.encode('utf-16-le') + b'!')), ('surrogate', cit('\\DEVICE\\'.encode('utf-16-le') + b'\0\xD8' + 'ABCDEF'.encode('utf-16-le'))),
+ ('smalldecomp', cit('\\DEVICE\\A\\B.EXE\0', decomp=20)), ('bigdecomp', cit('\\DEVICE\\A\\B.EXE\0', decomp=100000)), ('toobig', cit('\\DEVICE\\A.EXE\0', decomp=0x1000001)), ('maxok', cit('\\DEVICE\\M.EXE\0', decomp=0x1000000)),
+ ('zerocomp', cit('\\DEVICE\\A.EXE\0', comp=0)), ('negcomp', cit('\\DEVICE\\A.EXE\0', comp=-1)), ('zerodecomp', cit('\\DEVICE\\A.EXE\0', decomp=0)), ('intmaxcomp', cit('\\DEVICE\\A.EXE\0', comp=0x7FFFFFFF)), ('hugecomp', cit('\\DEVICE\\A.EXE\0', comp=100000)), ('smallcomp', cit('\\DEVICE\\A.EXE\0', comp=7)),
+ ('tail', cit('\\DEVICE\\A.EXE\0', tail=b'\0\0\xFF\xFF')), ('short', B(b'\1\2\3')), ('eight', B(struct.pack('<ii', 4, 4))), ('text', S('\\DEVICE\\NOT_COMPRESSED')), ('zerohdr', B(struct.pack('<ii', 8, 8) + b'\0' * 8)), ('baddisp', B(struct.pack('<ii', 6, 40) + struct.pack('<HB', 0xB003, 2) + b'x\x02\xF0')), ('cuttoken', B(struct.pack('<ii', 5, 40) + struct.pack('<HB', 0xB002, 1) + b'\x02\0')),
+)
+CIT = tree((CIT_PATH, {**CIT_VALUES, 'sub': rv(('x', cit('\\DEVICE\\IGNORED.EXE\0')))}))
+
+def dyn(ver=3, created=FT, start=FT + 1, stop=FT + 2, state=1, result=0x41301, size=0x24):
+    b = struct.pack('<iqqii', ver, created, start, state, result) + struct.pack('<q', stop)
+    return B(b[:size])
+def act(cmd='C:\\a b\\x.exe', args='-q "1,2"', ctx='SYSTEM', magic=0x6666, trail=b''):
+    c = ctx.encode('utf-16-le'); e = cmd.encode('utf-16-le'); a = args.encode('utf-16-le')
+    return B(struct.pack('<Hi', 3, len(c)) + c + struct.pack('<H', magic) + b'\0\0\0\0' + struct.pack('<i', len(e)) + e + struct.pack('<i', len(a)) + a + trail)
+def raw_act(*parts): return B(b''.join(parts))
+task = lambda **k: rv(*[(n, v) for n, v in k.items()])
+TASKS = {
+ '{A1}': task(Path=S('\\Task,1'), Source=S('src'), Author=S('me'), Description=S('d "q"'), SecurityDescriptor=S('D:(A;;FA;;;BA)'), Actions=act(), DynamicInfo=dyn(), Triggers=B(b'\1')), '{A2}': task(DynamicInfo=dyn(size=0x1C)), '{A3}': task(DynamicInfo=dyn(size=0x20, start=0), Actions=act(cmd='x\0\0', args='y\0')),
+ '{A4}': task(DynamicInfo=dyn(size=0x1B)), '{A5}': task(Path=S('p')), '{A6}': task(DynamicInfo=dyn(created=-1)), '{A7}': task(DynamicInfo=dyn(start=-5, stop=-6)), '{A8}': task(DynamicInfo=dyn(start=2**63 - 1)), '{A9}': task(DynamicInfo=dyn(stop=2**63 - 1)), '{AA}': task(DynamicInfo=dyn(created=0, start=0, stop=0, state=-1, result=-1, ver=-1)),
+ '{B1}': task(Actions=act(magic=0x7777), DynamicInfo=dyn()), '{B2}': task(Actions=B(b'\1\2\3'), DynamicInfo=dyn()), '{B3}': task(Actions=B(b'\1\2\3\4'), DynamicInfo=dyn()), '{B4}': task(Actions=B(b'\1\2\3\4\5'), DynamicInfo=dyn()), '{B5}': task(Actions=raw_act(struct.pack('<Hi', 3, 2000)), DynamicInfo=dyn()),
+ '{B6}': task(Actions=raw_act(struct.pack('<Hi', 3, -2000)), DynamicInfo=dyn()), '{B7}': task(Actions=raw_act(struct.pack('<Hi', 3, 0x7FFFFFFF), b'\0' * 8), DynamicInfo=dyn()), '{B8}': task(Actions=raw_act(struct.pack('<Hi', 3, 0), struct.pack('<H', 0x6666)), DynamicInfo=dyn()),
+ '{B9}': task(Actions=raw_act(struct.pack('<Hi', 3, 0), struct.pack('<H', 0x6666), b'\0' * 4, struct.pack('<i', 2), b'a\0'), DynamicInfo=dyn()), '{BA}': task(Actions=raw_act(struct.pack('<Hi', 3, 0), struct.pack('<H', 0x6666), b'\0' * 4, struct.pack('<i', 500), b'a\0'), DynamicInfo=dyn()),
+ '{C1}': task(Actions=raw_act(struct.pack('<Hi', 3, 0), struct.pack('<H', 0x6666), b'\0' * 4, struct.pack('<i', -8), b'a\0'), DynamicInfo=dyn()), '{C2}': task(Actions=raw_act(struct.pack('<Hi', 3, 0), struct.pack('<H', 0x6666), b'\0' * 4, struct.pack('<i', -100), b'a\0'), DynamicInfo=dyn()), '{C3}': task(Actions=raw_act(struct.pack('<Hi', 3, 0), struct.pack('<H', 0x6666), b'\0' * 4, struct.pack('<i', 0x7FFFFFF0), b'a\0'), DynamicInfo=dyn()),
+ '{C4}': task(Actions=raw_act(struct.pack('<Hi', 3, 0), struct.pack('<H', 0x6666), b'\0' * 4, struct.pack('<i', 2), b'a\0', struct.pack('<i', 400), b'b\0'), DynamicInfo=dyn()), '{C5}': task(Actions=raw_act(struct.pack('<Hi', 3, 0), struct.pack('<H', 0x6666), b'\0' * 4, struct.pack('<i', 3), b'a\0b', struct.pack('<i', 3), b'c\0d'), DynamicInfo=dyn()),
+ '{C6}': task(Actions=raw_act(struct.pack('<Hi', 3, 0), struct.pack('<H', 0x6666), b'\0' * 4, struct.pack('<i', 2), b'a\0', struct.pack('<i', 0), b''), DynamicInfo=dyn()), '{C7}': task(Actions=S('text action value'), DynamicInfo=dyn()), '{C8}': task(Actions=B(b''), DynamicInfo=dyn()),
+ '{D1}': task(Path=D(5), Source=B(b'\1\2'), Author=M('a', 'b'), Description=Q(9), SecurityDescriptor=B(bytes(range(9))), DynamicInfo=dyn()), '{D2}': {},
+ '{D3}': task(DynamicInfo=S('not binary, but long enough for the whole of DynamicInfo')), '{D4}': task(DynamicInfo=D(5)),
+}
+TASKCACHE = tree(('Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache\\Tasks', TASKS))
+LARGE_SW = tree(('Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache\\Tasks', TASKS), (CIT_PATH, {**CIT_VALUES}))
+EXTRA_HIVES.update({'l_settings/settings.dat': ('settings.dat', SETTINGS), 'l_settings_odd/settings.dat': ('settings.dat', SETTINGS_ODD), 'l_settings_bad/settings.dat': ('settings.dat', SETTINGS_BAD), 'l_software/SOFTWARE': ('SOFTWARE', LARGE_SW)})
+for k_, v_ in SAM_LARGE.items(): EXTRA_HIVES[f'l_sam_{k_}/SAM'] = ('SAM', v_)
+# randomly damaged: a value keeps its name, and often its type
+def damaged(spec, r, rate):
+    out = {}
+    for k, v in spec.items():
+        if isinstance(v, dict): out[k] = damaged(v, r, rate); continue
+        if not k.startswith('=') or r.random() > rate: out[k] = v; continue
+        t, d = v[0], v[1]
+        kind = r.randrange(7)
+        if kind == 0 and d: d = d[:r.randrange(len(d))]
+        elif kind == 1 and d:
+            b = bytearray(d)
+            for _ in range(r.randint(1, 4)): b[r.randrange(len(b))] = r.randrange(256)
+            d = bytes(b)
+        elif kind == 2 and len(d) >= 4:
+            b = bytearray(d); at = r.randrange(len(b) - 3); struct.pack_into('<i', b, at, r.choice([0, 1, -1, 2, 8, 0x7FFFFFFF, -0x80000000, 0x10000, len(b)])); d = bytes(b)
+        elif kind == 3: d = bytes(r.randrange(256) for _ in range(r.randint(0, 60)))
+        elif kind == 4 and 257 <= t <= 293: t = r.randint(257, 293)
+        elif kind == 5: d = d + bytes(r.randrange(256) for _ in range(r.randint(1, 16)))
+        out[k] = (t, d)
+    return out
+for seed in range(1, 61):
+    r = random.Random(5000 + seed)
+    for name, (internal, spec) in {'se/settings.dat': ('settings.dat', SETTINGS), 'so/settings.dat': ('settings.dat', SETTINGS_ODD), 'sa/SAM': ('SAM', sam()), 'sw/SOFTWARE': ('SOFTWARE', LARGE_SW)}.items():
+        EXTRA_HIVES[f'ld{seed}/{name}'] = (internal, damaged(spec, r, 0.3))
+LARGE_PATHS = [
+ ('settings', ['LocalState', 'RoamingState', 'LocalState\\*', 'RoamingState\\*', 'LocalState\\sub\\deep', 'Other']),
+ ('Sam', ['SAM\\Domains\\Account\\Users']),
+ ('Software', ['Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache\\Tasks', CIT_PATH]),
+]
 H_ = {
  'amcache/Amcache.hve': ('Amcache.hve', AMCACHE), 'ntuser/NTUSER.DAT': ('ntuser.dat', NTUSER), 'ntuser_bad/NTUSER.DAT': ('ntuser.dat', NTUSER_BAD),
  'ntuser_bad2/NTUSER.DAT': ('ntuser.dat', NTUSER_BAD2), 'ntuser_bad3/NTUSER.DAT': ('ntuser.dat', NTUSER_BAD3), 'ntuser_bad4/NTUSER.DAT': ('ntuser.dat', NTUSER_BAD4), 'ntuser_bad5/NTUSER.DAT': ('ntuser.dat', NTUSER_BAD5),
@@ -407,6 +619,7 @@ PATHS = [
  ('Syscache', ['DefaultObjectStore\\ObjectTable']),
  ('UsrClass', ['Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository']),
 ]
+PATHS += LARGE_PATHS
 def q(s): return '"' + s.replace('\\', '\\\\') + '"'
 with open(f'{A}/plugins.reb', 'w') as f:
     f.write('Description: plugin test\nAuthor: t\nVersion: 1\nId: 11111111-1111-1111-1111-111111111111\nKeys:\n')

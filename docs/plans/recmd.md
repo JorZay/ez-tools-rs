@@ -1,6 +1,6 @@
 # Plan: porting RECmd to Rust
 
-Status: core done (2026-11-02): `registry-ez` and `recmd`. Plugins in progress (2026-11-04): 65 of 69 are done, the 4 large ones are left (see "Plugins"). rla is not started.
+Status: core done (2026-11-02): `registry-ez` and `recmd`. All 69 plugins done (2026-11-05, see "Plugins"). rla is not started.
 
 ## Done: the core
 
@@ -83,7 +83,7 @@ Upstream has 69, about 12,100 lines. Rated from their size and how much they par
 |---|---|---|---|
 | Small | 36 | 7-Zip (4), Adobe.TrustManager-Websites, Amcache (7), AppCompatCache, AppCompatFlags2, AppPaths, Bam, BluetoothServicesBthPort, DeviceClasses, DsrmAdminLogonBehaviour, ETW, FeatureUsage, JumplistData, NetworkAdapters, NetworkSettings, NetworkSetup2, Products, ProfileList, RADAR, RunMRU, TerminalServerClient, TypedURLs, Uninstall, VolumeInfoCache, WindowsApp, WindowsPortableDevices, WinRAR | Done |
 | Medium | 25 | Adobe, Ares, CIDSizeMRU, DHCPNetworkHint, FileExts, FirewallRules, FirstFolder, IconLayouts, KnownNetworks, LastVisitedMRU, OfficeMRU, OpenSaveMRU, RecentApps, SAMBuiltin, SCSI, Services, SWD, SyscacheObjectTable, TaskFlowShellActivities, TimeZoneInformation, TrustedDocuments, USB, USBSTOR, UserAssist, WordWheelQuery | Done (2026-11-05) |
-| Large | 4 | ApplicationSettingsContainer, SAM, TaskCache, AppCompatFlags (LZNT1) | To do |
+| Large | 4 | ApplicationSettingsContainer, SAM, TaskCache, AppCompatFlags (LZNT1) | Done (2026-11-05) |
 | Need `shellitems-ez` | 4 | LastVisitedPidlMRU, OpenSavePidlMRU, Taskband, RecentDocs (`Beef0004` only) | Done (2026-11-05) |
 
 How the framework behaves, each seen in the original's output:
@@ -91,7 +91,7 @@ How the framework behaves, each seen in the original's output:
 - A plugin that handles a key replaces its raw values with `(plugin)` rows, even when it gives no rows at all. `DisablePlugin: true` turns that off for one batch key.
 - Which plugins run is GetPluginsToActivate as written, including its odd cases: a plugin for one value runs on a parent key of its path, when the batch key names that value.
 - A plugin's file is `<out>/<time>/<time>_<class>_<hive>.csv`, or `<csvf stem>_<class>.<ext>` with `--csvf`. Calls append, the header only once.
-- The plugin's CSV has the first column, BatchKeyPath, the second column, BatchValueName, then the rest: RECmd gives the two batch columns indexes 0 and 1, and the others keep theirs.
+- The plugin's CSV has the first column, BatchKeyPath, the second column, BatchValueName, then the rest: RECmd gives the two batch columns indexes 0 and 1, and the others keep theirs. CsvHelper's sort (List.Sort) only keeps ties in order up to 16 items, so UserAccounts, the one class with more (31), has BatchValueName before its second column.
 - Its time stamps ignore `--dt`, since RECmd's converter never receives it. The batch CSV follows `--dt`.
 - What a plugin doesn't catch (RADAR without its subkeys, for one) fails the hive and makes the exit code 1. Earlier rows of that hive stay.
 - Differences: on Linux the original makes a folder of the `/` in the file's name; this port writes an underscore there, as Windows does. Plugins run in the order Windows lists their dlls, by name, where Linux's order depends on the file system. The X format of a GUID (`{0x...}`) isn't read by `guidmapping-ez`.
@@ -107,6 +107,10 @@ Known differences: `Details` has `\n` line ends as the Linux reference does, whe
 Results for the 25 medium plugins (2026-11-05), same versions: 0 differences in output file contents in 58 runs on generated hives (normal, odd and missing values for every plugin), 200 on randomly damaged ones, 113 on the Registry.Test hives (the batch examples, and a batch file of every plugin's key), and 62 rechecking the other plugins' cases. Real rows came for 17 of the 25: CIDSizeMRU, FileExts, FirewallRules, FirstFolder, KnownNetworks, OfficeMRU, SAMBuiltin, SCSI, Services, SWD, TimeZoneInformation, TrustedDocuments, USB, USBSTOR, UserAssist, WordWheelQuery and Ares. The hives have nothing for Adobe, DHCPNetworkHint, IconLayouts, LastVisitedMRU, OpenSaveMRU, RecentApps, SyscacheObjectTable and TaskFlowShellActivities, so those were only compared on generated data.
 
 Known differences: DHCPNetworkHint gives the current time for a lease value that isn't there, as the original does, so those two columns can't match between any two runs. Rows of a batch file are in Windows' dll order where the Linux reference uses the disk's, which shows when two plugins read one key (DHCPNetworkHint and NetworkSettings): the same rows, in another order. Error messages of unusual damage can differ from .NET's wording on the console, not in files.
+
+Results for the 4 large plugins (2026-11-05), same versions: 0 differences in output file contents or exit codes in 30 runs on hand-built hives (all 37 RegUwp types with normal, odd and damaged values; users, groups and SIDs of SAM; Actions layouts of TaskCache; LZNT1 streams made by a compressor in the generator), 480 on randomly damaged ones, 116 on the Registry.Test and RegistryPlugins.Test hives with DFIRBatch, Kroll_Batch and a batch file of every plugin's key, and 706 rechecking the other plugins' generated cases. Each of the 1,332 runs reports the same number of errors per plugin as the reference; only the wording of .NET's messages differs. Real rows came for UserAccounts and TaskCache. The hives have nothing for ApplicationSettingsContainer (no settings.dat) or AppCompatFlags (no `CIT\System` key), so those two were only compared on generated data.
+
+Known differences: UserAccounts' `Year > 1700` checks are in UTC where the original uses the machine's time zone, which only matters within hours of the start of 1700. A group with a member count of 2147483647 and a member of unknown type never ends in the original (read from its source, not run); here the group's list of members just ends there, as with any other count.
 
 ## Reference build
 

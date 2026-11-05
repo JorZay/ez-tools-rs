@@ -147,6 +147,19 @@ pub fn parse_i32_of(s: Option<&str>) -> NetResult<i32> {
     parse_i32(s.ok_or("Value cannot be null. (Parameter 's')")?)
 }
 
+/// int.Parse with NumberStyles.HexNumber: at most 8 digits count, and the top bit makes it negative
+pub fn parse_hex_i32(s: &str) -> NetResult<i32> {
+    let digits = s.trim_start_matches(is_white).trim_end_matches('\0').trim_end_matches(is_white);
+    if digits.is_empty() || !digits.bytes().all(|c| c.is_ascii_hexdigit()) {
+        return Err(format_error(s));
+    }
+    let significant = digits.trim_start_matches('0');
+    if significant.len() > 8 {
+        return Err("Value was either too large or too small for an Int32.".to_string());
+    }
+    Ok(u32::from_str_radix(if significant.is_empty() { "0" } else { significant }, 16).map_err(|e| e.to_string())? as i32)
+}
+
 /// Each UTF-16 unit of an MRUList is one entry: the place of a value with this name
 pub fn mru_of_units(order: &[u16], name: &str) -> i32 {
     let mut units = name.encode_utf16();
