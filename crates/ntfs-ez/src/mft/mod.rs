@@ -461,7 +461,7 @@ impl Mft {
             })
             .collect();
         // directories first, then names as .NET's culture-aware comparer orders them
-        found.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| culture_cmp(&a.0, &b.0)));
+        found.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| ez_common::dotnet::compare_culture(&a.0, &b.0)));
         found
     }
 
@@ -561,26 +561,4 @@ fn parse_block_with(b: &[u8], size: usize, i: usize, options: &LoadOptions) -> F
         r.warnings.push(String::new());
     }
     r
-}
-
-/// Strings as .NET's culture-aware comparer (ICU's root collation) orders them, for ASCII: white space, then
-/// punctuation, symbols, currency, digits and letters, case ignored first (then lowercase before uppercase). Other
-/// characters are compared by their lowercase value, after ASCII letters.
-pub fn culture_cmp(a: &str, b: &str) -> std::cmp::Ordering {
-    const ORDER: &str = "\t\n\x0b\x0c\r _-,;:!?.'\"()[]{}@*/\\&#%`^+<=>|~$0123456789aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ";
-    let primary = |c: char| -> (u32, u32) {
-        let l = c.to_lowercase().next().unwrap_or(c);
-        match ORDER.find(l) {
-            Some(i) => (0, i as u32),
-            None => (1, l as u32),
-        }
-    };
-    let pa: Vec<(u32, u32)> = a.chars().map(primary).collect();
-    let pb: Vec<(u32, u32)> = b.chars().map(primary).collect();
-    pa.cmp(&pb).then_with(|| {
-        // lowercase first
-        let ta: Vec<bool> = a.chars().map(char::is_uppercase).collect();
-        let tb: Vec<bool> = b.chars().map(char::is_uppercase).collect();
-        ta.cmp(&tb)
-    })
 }

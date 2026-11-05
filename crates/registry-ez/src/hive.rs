@@ -70,9 +70,9 @@ impl ValueObj {
     }
 }
 
-/// A key name or path in the form OrdinalIgnoreCase compares them (simple uppercase mapping)
+/// A key name or path in the form OrdinalIgnoreCase compares them
 pub fn fold(s: &str) -> String {
-    s.chars().map(upper_char).collect()
+    ez_common::dotnet::ordinal_ignore_case(s)
 }
 
 pub use ez_common::dotnet::{lower_invariant_char as lower_char, upper_invariant_char as upper_char};
@@ -84,7 +84,7 @@ pub fn lower(s: &str) -> String {
 
 /// string.ToUpperInvariant
 pub fn upper(s: &str) -> String {
-    fold(s)
+    s.chars().map(upper_char).collect()
 }
 
 /// IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0

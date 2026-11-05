@@ -158,3 +158,13 @@ Two KAPE extractions (31 GB, one with 3 shadow copies), not in this repository. 
 
 - **Plugin order.** Where two plugins share a key (Adobe and AdobeTrustManager on `Software\Adobe`), the original runs them in the order the file system lists its Plugins folder, so its batch rows depend on the folder. NTFS lists names sorted, which is this port's order. Compare with a Plugins folder created in that order (`LC_ALL=C sort -f`): on btrfs the listing follows creation order, and a plain copy can differ.
 - **Console.** The original logs `Error getting ValueData` several times per value where this port logs it once (known), and under `-d` it also tries files that aren't hives (7 and 2 here) and reports them, where the Windows build skips them.
+
+## Accented letters (2026-11-05)
+
+Checked against .NET 10: case mapping on every code point, `CompareTo` and `InvariantCultureIgnoreCase` on 140,909 pairs of accented strings, and 547 runs on a hive with accented key names, value names and data (Latin-1 and UTF-16 names, composed and decomposed forms), plus 628 on the plugin hives with accented text in their values. Sorting uses ICU4X's root collation, as .NET uses ICU's; only 2 of the pairs differ, both with stacked combining marks. Output files are identical.
+
+Known differences that remain:
+
+- **Regex case rules.** Rust's `(?i)` and .NET's `IgnoreCase` differ for `i`/`I`/`İ` (.NET matches them together), `s`/`S`/`ſ`, `β`/`ϐ` and `σ`/`ς` (Rust matches them together). This changes hits of `--regex` searches and of `--sd`/`--ss`, which use a regex inside, only on data holding those letters. Common accented letters match the same. `\w` and `\b` also differ on some of the 65,000 BMP characters, but gave the same results on the Latin test strings.
+- **Names that aren't valid UTF-8 (Linux only).** Neither tool processes a folder or hive so named. This port logs it (`Unable to read folder`, and exit code 1 in LECmd) where the original skips the folder silently.
+

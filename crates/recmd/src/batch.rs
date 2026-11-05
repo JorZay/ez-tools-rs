@@ -4,7 +4,7 @@ use ez_common::cli::log::Logger;
 use ez_common::json::ServiceStackObject;
 use ez_common::net::{self, NetResult};
 use ez_common::{Timestamp, csv};
-use registry_ez::hive::{Hive, KeyId, VkId, upper};
+use registry_ez::hive::{Hive, KeyId, VkId};
 use yaml_rust2::parser::{Event, MarkedEventReceiver, Parser};
 use yaml_rust2::scanner::{Marker, TScalarStyle};
 
@@ -660,9 +660,8 @@ pub fn plugin_row(hive: &Hive, k: KeyId, key: &BatchKey, row: registry_plugins::
 
 /// The value with this name (FirstOrDefault, case-insensitively)
 pub fn find_value(hive: &Hive, k: KeyId, name: &str) -> NetResult<Option<VkId>> {
-    let want = upper(name);
     for &v in &hive.keys[k].values {
-        if upper(hive.vks[v].name()?) == want {
+        if ez_common::dotnet::equals_invariant_ignore_case(hive.vks[v].name()?, name) {
             return Ok(Some(v));
         }
     }

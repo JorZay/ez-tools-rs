@@ -89,7 +89,7 @@ impl MapSet {
         for entry in std::fs::read_dir(path)? {
             let entry = entry?;
             let name = entry.file_name().to_string_lossy().into_owned();
-            if name.len() > 4 && name[name.len() - 4..].eq_ignore_ascii_case(".map") && entry.file_type()?.is_file() {
+            if name.len() > 4 && name.as_bytes()[name.len() - 4..].eq_ignore_ascii_case(b".map") && entry.file_type()?.is_file() {
                 let bytes = std::fs::read(entry.path())?;
                 sources.push((name, String::from_utf8_lossy(&bytes).trim_start_matches('\u{FEFF}').to_string()));
             }
@@ -309,6 +309,16 @@ fn compile(map: EventLogMap, errors: &mut Vec<String>) -> Option<CompiledMap> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_name_ending_inside_a_letter_is_not_a_map() {
+        let dir = std::env::temp_dir().join(format!("evtx-maps-accents-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("\u{e9}\u{e9}a"), "not a map").unwrap();
+        let loaded = MapSet::load_dir(&dir);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(loaded.is_ok());
+    }
 
     #[test]
     fn yaml_as_yamldotnet_reads_it() {

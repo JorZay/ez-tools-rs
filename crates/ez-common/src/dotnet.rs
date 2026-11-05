@@ -1,5 +1,8 @@
 //! Numbers as .NET writes them with the invariant culture.
 
+use icu_collator::options::{CollatorOptions, Strength};
+use icu_collator::{Collator, CollatorBorrowed};
+use std::sync::LazyLock;
 use std::fmt::Write;
 
 /// A double as .NET (Core 3.0 and later) writes it with the invariant culture: the shortest text that reads back
@@ -63,44 +66,23 @@ fn shortest(sci: &str, precision: i32) -> String {
     out
 }
 
-/// The letter under an accented Latin-1 letter
-fn base_letter(c: char) -> char {
-    match c {
-        '\u{c0}'..='\u{c5}' | '\u{e0}'..='\u{e5}' => 'a',
-        '\u{c7}' | '\u{e7}' => 'c',
-        '\u{c8}'..='\u{cb}' | '\u{e8}'..='\u{eb}' => 'e',
-        '\u{cc}'..='\u{cf}' | '\u{ec}'..='\u{ef}' => 'i',
-        '\u{d1}' | '\u{f1}' => 'n',
-        '\u{d2}'..='\u{d6}' | '\u{f2}'..='\u{f6}' => 'o',
-        '\u{d9}'..='\u{dc}' | '\u{f9}'..='\u{fc}' => 'u',
-        '\u{dd}' | '\u{fd}' | '\u{ff}' => 'y',
-        other => other,
-    }
-}
+static COLLATOR: LazyLock<CollatorBorrowed<'static>> =
+    LazyLock::new(|| Collator::try_new(Default::default(), CollatorOptions::default()).expect("the root collation is compiled in"));
 
-/// Where a character sorts in ICU's root collation, which .NET's culture comparison uses: spaces, punctuation and symbols,
-/// then digits, then letters
-fn collation_primary(c: char) -> u32 {
-    const ORDER: &str = "\t\n\u{b}\u{c}\r _-,;:!?.'\"()[]{}@*/\\&#%`^+<=>|~$0123456789";
-    let base = base_letter(c);
-    if base.is_ascii_alphabetic() {
-        return 1000 + (base.to_ascii_lowercase() as u32 - 'a' as u32);
-    }
-    if let Some(i) = ORDER.find(c) {
-        return i as u32 + 1;
-    }
-    // other characters come after ASCII's letters, in code point order
-    2000 + c as u32
-}
+static COLLATOR_IGNORE_CASE: LazyLock<CollatorBorrowed<'static>> = LazyLock::new(|| {
+    let mut options = CollatorOptions::default();
+    options.strength = Some(Strength::Secondary);
+    Collator::try_new(Default::default(), options).expect("the root collation is compiled in")
+});
 
-/// string.CompareTo in en-US: by letter first, then by accent, and at the first difference of case only, lowercase goes first.
-/// Control characters count for nothing. Letters beyond Latin-1 sort in code point order, without ICU's tables
+/// string.CompareTo in en-US, which is ICU's root collation: by letter first, then by accent, then lowercase before uppercase
 pub fn compare_culture(a: &str, b: &str) -> std::cmp::Ordering {
-    let ignorable = |c: &char| c.is_ascii_control() && !matches!(c, '\t' | '\n' | '\u{b}' | '\u{c}' | '\r');
-    let keys = |s: &str| s.chars().filter(|c| !ignorable(c)).map(collation_primary).collect::<Vec<u32>>();
-    let accents = |s: &str| s.chars().filter(|c| !ignorable(c)).map(|c| if base_letter(c) == c { 0 } else { c.to_lowercase().next().unwrap_or(c) as u32 }).collect::<Vec<u32>>();
-    let case = |s: &str| s.chars().filter(|c| !ignorable(c)).map(char::is_uppercase).collect::<Vec<bool>>();
-    keys(a).cmp(&keys(b)).then_with(|| accents(a).cmp(&accents(b))).then_with(|| case(a).cmp(&case(b)))
+    COLLATOR.compare(a, b)
+}
+
+/// StringComparison.InvariantCultureIgnoreCase: the same accents count, however they are written, and case doesn't
+pub fn equals_invariant_ignore_case(a: &str, b: &str) -> bool {
+    COLLATOR_IGNORE_CASE.compare(a, b) == std::cmp::Ordering::Equal
 }
 
 /// A number with thousands separators (.NET's N0)
@@ -180,9 +162,14 @@ pub fn lower_invariant_char(c: char) -> char {
     }
 }
 
-/// string.ToUpperInvariant, also the form OrdinalIgnoreCase compares strings in
+/// string.ToUpperInvariant
 pub fn upper_invariant(s: &str) -> String {
     s.chars().map(upper_invariant_char).collect()
+}
+
+/// The form OrdinalIgnoreCase compares strings in: ToUpperInvariant, except that it keeps U+017F (long s)
+pub fn ordinal_ignore_case(s: &str) -> String {
+    s.chars().map(|c| if c == '\u{17F}' { c } else { upper_invariant_char(c) }).collect()
 }
 
 /// string.ToLowerInvariant
@@ -195,6 +182,12 @@ mod tests {
     use super::*;
 
     // Every code point was compared with .NET 10's ToUpperInvariant and ToLowerInvariant; these are the ones Rust maps differently
+    #[test]
+    fn ordinal_ignore_case_keeps_long_s() {
+        assert_eq!(ordinal_ignore_case("\u{17F}a\u{E9}"), "\u{17F}A\u{C9}");
+        assert_eq!(upper_invariant("\u{17F}"), "S");
+    }
+
     #[test]
     fn case_mapping_as_dotnet() {
         assert_eq!(lower_invariant("\u{130}A\u{3A3}"), "\u{130}a\u{3C3}");
@@ -253,6 +246,12 @@ mod tests {
         assert_eq!(compare_culture("e", "\u{e9}"), Less);
         assert_eq!(compare_culture("\u{e9}", "f"), Less);
         assert_eq!(compare_culture("z", "\u{5b50}"), Less);
+        assert_eq!(compare_culture("\u{e1}", "\u{e0}"), Less, "acute before grave");
+        assert_eq!(compare_culture("\u{e4}", "\u{e3}"), Less, "diaeresis before tilde");
+        assert_eq!(compare_culture("\u{f1}", "o"), Less, "n with tilde among the n's");
+        assert_eq!(compare_culture("\u{e9}", "e\u{301}"), std::cmp::Ordering::Equal);
+        assert!(equals_invariant_ignore_case("CAF\u{c9}", "cafe\u{301}"));
+        assert!(!equals_invariant_ignore_case("cafe", "caf\u{e9}"));
     }
 
     #[test]
