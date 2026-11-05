@@ -84,7 +84,7 @@ Upstream has 69, about 12,100 lines. Rated from their size and how much they par
 | Small | 36 | 7-Zip (4), Adobe.TrustManager-Websites, Amcache (7), AppCompatCache, AppCompatFlags2, AppPaths, Bam, BluetoothServicesBthPort, DeviceClasses, DsrmAdminLogonBehaviour, ETW, FeatureUsage, JumplistData, NetworkAdapters, NetworkSettings, NetworkSetup2, Products, ProfileList, RADAR, RunMRU, TerminalServerClient, TypedURLs, Uninstall, VolumeInfoCache, WindowsApp, WindowsPortableDevices, WinRAR | Done |
 | Medium | 25 | Adobe, Ares, CIDSizeMRU, DHCPNetworkHint, FileExts, FirewallRules, FirstFolder, IconLayouts, KnownNetworks, LastVisitedMRU, OfficeMRU, OpenSaveMRU, RecentApps, SAMBuiltin, SCSI, Services, SWD, SyscacheObjectTable, TaskFlowShellActivities, TimeZoneInformation, TrustedDocuments, USB, USBSTOR, UserAssist, WordWheelQuery | To do |
 | Large | 4 | ApplicationSettingsContainer, SAM, TaskCache, AppCompatFlags (LZNT1) | To do |
-| Need `shellitems-ez` | 4 | LastVisitedPidlMRU, OpenSavePidlMRU, Taskband, RecentDocs (`Beef0004` only) | Waits for LECmd's library |
+| Need `shellitems-ez` | 4 | LastVisitedPidlMRU, OpenSavePidlMRU, Taskband, RecentDocs (`Beef0004` only) | `shellitems-ez` is now available |
 
 How the framework behaves, each seen in the original's output:
 

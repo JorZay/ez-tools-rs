@@ -12,6 +12,7 @@ Each tool is a library (which never prints or exits, so other programs can use i
 | [AmcacheParser](https://github.com/EricZimmerman/AmcacheParser) → `amcacheparser` | Done (`docs/plans/amcache.md`) |
 | [AppCompatCacheParser](https://github.com/EricZimmerman/AppCompatCacheParser) → `appcompatcacheparser` | Done (`docs/plans/appcompatcache.md`) |
 | [SQLECmd](https://github.com/EricZimmerman/SQLECmd) → `sqlecmd` | Done, uses the original's maps unchanged (`docs/plans/sqlecmd.md`) |
+| [LECmd](https://github.com/EricZimmerman/LECmd) → `lecmd` | Done (`docs/plans/lecmd.md`) |
 
 The upstream commits each port was built from are in `docs/upstream.md`.
 
@@ -69,6 +70,19 @@ sqlecmd -f /cases/host1/History --maps maps-sqlecmd --json /tmp/out --blobdir /t
 
 Without `--maps`, the maps are read from a `Maps` folder next to the program. Only copies of the databases are opened, in `--temp` or a `Temp` folder next to the program, so the evidence
 isn't changed, and a `-wal` file is still read. `--sync` needs a build with `--features sync`. Values come out as in the original, which depends on the column's declared type: see `docs/plans/sqlecmd.md`.
+
+## lecmd
+
+A port of LECmd: Windows shortcut (`.lnk`) files, shown on the console or exported to CSV, JSON, XML and XHTML, with LECmd's columns. The shell items and extension
+blocks they contain are read by `shellitems-ez`, which the other tools that need them can share.
+
+```
+lecmd -d /cases/host1/Recent --csv /tmp/out -q
+lecmd -f /cases/host1/Recent/report.lnk
+lecmd -d /cases/host1 --all --json /tmp/out --html /tmp/out --cp 932
+```
+
+Times are shown in UTC, on any machine: see `docs/plans/lecmd.md` for the few places where the original uses the local time zone.
 
 ## appcompatcacheparser
 

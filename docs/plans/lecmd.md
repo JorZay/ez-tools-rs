@@ -1,6 +1,7 @@
 # Plan: porting LECmd to Rust
 
-Status: planned, not started. Line counts and samples are from the upstream clones of 2026-11-04.
+Status: done (2026-11-05), against LECmd `b5bbf29e4b58384fe7bd4384cb4851960c31dc83`, version 2026.10.4. Crates `shellitems-ez`, `lnk-ez`
+and `lecmd`. Results and known differences are under "Results". Line counts are from the upstream clones of 2026-11-04.
 
 ## What is ported
 
@@ -29,8 +30,7 @@ any other commit would give differences that look like bugs, so step 0 is confir
 
 - Lnk: `dab1c8ab9c1c18d2cf89a4938ab95794d17d3a44`, the tag 2026.10.11.
 - GuidMapping: `e2c93615a491ca43197b36960a436b559062cb52`, the tag 2026.10.2.
-- ExtensionBlocks: `6dd29c0318c15d16ac86755dba021f35913461d1`, **not confirmed**: the clone is shallow and has no tags, so check it
-  is 2026.10.9.
+- ExtensionBlocks: `897bbe3`, the tag 2026.10.9. HEAD at the time, `6dd29c0318c15d16ac86755dba021f35913461d1`, is **not** what LECmd uses.
 - LECmd: `b5bbf29e4b58384fe7bd4384cb4851960c31dc83`.
 
 ## Reference
@@ -79,6 +79,52 @@ Steps 2 and 3 are good commit points. Each is usable and testable alone.
 - **Windows and Linux differences.** Where the Linux reference differs from the Windows build because of path handling, this
   port follows Windows where that is more complete, as `FileExtension` does in AmcacheParser, and each case gets documented.
 
+## Results
+
+Compared with the reference built from the same commits on .NET 10, with `LANG=en_US.UTF-8` and `TZ=UTC`, excluding the banner, timings and stack
+traces. Every result below is 0 differences:
+
+| Check | Size |
+|---|---|
+| Upstream's shell item samples, one by one (`ToString()`, every block) | All of `ShellItemSamples.txt` plus those inside the links |
+| Upstream's links, as read by the library | All 1,002 |
+| Whole tool over the samples: every output and option (`tools/parity-lecmd.sh`) | 12 runs |
+| Whole tool over randomly damaged links | 4 runs over 1,500 links |
+| Whole tool on edge cases (links, empty files, bad paths and options) | 23 runs |
+| Whole tool with `--cp`: 21 code pages, built-in and invalid ones included | 22 runs |
+| Whole tool with `TZ=America/New_York` | 1 run, 557 files |
+| Links randomly damaged, as read by the library | 6,000 |
+| Shell items randomly damaged | 40,000 in the final run |
+| Blocks and items generated to reach what the samples don't | 360,000 over 6 seeds |
+| All 116 single and double byte code pages, against random bytes and every byte pair | 12,064 and 33,023 strings per page |
+
+**Coverage, and why the generated data exists.** The clean samples reach only 35 of the 85 item classes and 9 of the 35 block classes, so a clean result on
+them alone says little. The generated items put every block signature after a valid `0xbeef0004`, and build MTP, FindData and Nokia items, so that every
+block class and every item class that can reach the output was compared (`ShellBagParseError` can't: it only exists inside `Beef0005`, which shows it as a
+placeholder). This shows the code reads such data as the original does. It isn't real data, so what only real files contain, like the private corpus upstream
+tests with, remains untested. It found one bug, an MTP folder failing with the wrong error, and a check of `--cp` found that pages `encoding_rs` lacks or reads
+differently gave wrong text, so all single and double byte pages now come from tables generated from .NET.
+
+Upstream's own test projects (`SpecComplianceTests`, `ShellItemTests`) weren't ported; their sample files were compared with the reference instead, and this
+repository's tests build items and links in memory.
+
+### Known differences
+
+- **The machine's time zone.** The original shows local time in two places: `Beef0008`'s timestamp, and date properties of MTP items (which it also shifts
+  by the offset). This port shows UTC, wherever it runs. None of the 1,002 samples has these, so with `TZ=America/New_York` all their output is identical. With
+  `TZ=UTC` there is no difference at all.
+- **XHTML folder name.** The original on Linux makes folders of the path's separators (`_for_/home/x/index.xhtml`); this port uses underscores as on Windows.
+- **Unreadable folders** are named as on Windows, as in the other ports.
+- **Dates in zip contents.** .NET's `TryParse` accepts forms such as `23:09:1z`, which this port doesn't. One string in 320,000 damaged items.
+- **`--cp` with a stateful encoding:** ISO-2022 (`50220`, `50221`, `50222`, `50225`), HZ (`52936`), ISCII (`57002` to `57011`) and the 4-byte part of GB18030 (`54936`). None is a Windows
+  ANSI code page. `50220` to `50222` and `54936` use `encoding_rs`, whose results differ from .NET's on many strings; the others read as 1252. The other 116 pages are exact.
+- **The console log's name** has this port's version, not LECmd's, as in the other tools.
+
+Windows and Linux differences: as in the other ports, Windows wins where it is more complete, as for the two names above.
+
+`crates/shellitems-ez/data/dbcs.txt` is 1.4 MB, for the code page tables generated from .NET. `shellitems-ez` is now available for RECmd's 4 waiting
+plugins, and for JLECmd and SBECmd.
+
 ## Open questions
 
-None block the start. Do real `.lnk` files from your cases exist that can be used as extra samples? They wouldn't be committed.
+Do real `.lnk` files from your cases exist that can be used as extra samples? They wouldn't be committed.

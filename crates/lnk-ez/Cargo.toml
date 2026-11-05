@@ -1,0 +1,13 @@
+[package]
+name = "lnk-ez"
+description = "Reads Windows shortcut (.lnk) files, as Eric Zimmerman's Lnk does"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ez-common = { version = "0.1.0", path = "../ez-common" }
+guidmapping-ez = { version = "0.1.0", path = "../guidmapping-ez" }
+shellitems-ez = { version = "0.1.0", path = "../shellitems-ez" }

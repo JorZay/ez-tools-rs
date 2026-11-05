@@ -1,0 +1,15 @@
+[package]
+name = "lecmd"
+description = "Reads Windows shortcut (.lnk) files to the console, CSV, JSON, XML and XHTML, with LECmd's output"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+clap = { version = "4.6.7", features = ["derive", "wrap_help"] }
+ez-common = { version = "0.1.0", path = "../ez-common" }
+lnk-ez = { version = "0.1.0", path = "../lnk-ez" }
+sha1 = "0.11.0"
+shellitems-ez = { version = "0.1.0", path = "../shellitems-ez" }

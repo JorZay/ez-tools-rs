@@ -9,14 +9,14 @@ use std::borrow::Cow;
 /// An exception's message
 pub type NetResult<T> = Result<T, String>;
 
-const INDEX_OUT_OF_RANGE: &str =
+pub const INDEX_OUT_OF_RANGE: &str =
     "Index was out of range. Must be non-negative and less than the size of the collection. (Parameter 'startIndex')";
-const TOO_SHORT: &str =
+pub const TOO_SHORT: &str =
     "The array starting from the specified index is not long enough to read a value of the specified type. (Parameter 'value')";
-const OUT_OF_BOUNDS: &str = "Offset and length were out of bounds for the array or count is greater than the number of elements from index to the end of the source collection.";
+pub const OUT_OF_BOUNDS: &str = "Offset and length were out of bounds for the array or count is greater than the number of elements from index to the end of the source collection.";
 pub const ARRAY_INDEX: &str = "Index was outside the bounds of the array.";
 pub const OVERFLOW: &str = "Arithmetic operation resulted in an overflow.";
-const BUFFER_RANGE: &str = "Index and count must refer to a location within the buffer. (Parameter 'bytes')";
+pub const BUFFER_RANGE: &str = "Index and count must refer to a location within the buffer. (Parameter 'bytes')";
 pub const MORE_THAN_ONE: &str = "Sequence contains more than one matching element";
 
 fn non_negative(name: &str, value: i64) -> String {
