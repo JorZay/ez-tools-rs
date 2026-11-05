@@ -1,0 +1,13 @@
+[package]
+name = "srum-ez"
+description = "Reads SRUM databases (SRUDB.dat), as Eric Zimmerman's SrumData does"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ese-ez = { version = "0.1.0", path = "../ese-ez" }
+ez-common = { version = "0.1.0", path = "../ez-common" }
+registry-ez = { version = "0.1.0", path = "../registry-ez" }

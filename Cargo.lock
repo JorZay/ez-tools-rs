@@ -392,6 +392,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ese-ez"
+version = "0.1.0"
+
+[[package]]
 name = "evtx-ez"
 version = "0.1.0"
 dependencies = [
@@ -1301,6 +1305,25 @@ dependencies = [
  "rusqlite",
  "sha1",
  "yaml-rust2",
+]
+
+[[package]]
+name = "srum-ez"
+version = "0.1.0"
+dependencies = [
+ "ese-ez",
+ "ez-common",
+ "registry-ez",
+]
+
+[[package]]
+name = "srumecmd"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "ese-ez",
+ "ez-common",
+ "srum-ez",
 ]
 
 [[package]]

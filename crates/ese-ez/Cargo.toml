@@ -1,0 +1,10 @@
+[package]
+name = "ese-ez"
+description = "Reads the tables of ESE (Extensible Storage Engine) databases without Windows' esent.dll"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]

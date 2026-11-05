@@ -15,6 +15,7 @@ Each tool is a library (which never prints or exits, so other programs can use i
 | [SQLECmd](https://github.com/EricZimmerman/SQLECmd) → `sqlecmd` | Done, uses the original's maps unchanged (`docs/plans/sqlecmd.md`) |
 | [LECmd](https://github.com/EricZimmerman/LECmd) → `lecmd` | Done (`docs/plans/lecmd.md`) |
 | [JLECmd](https://github.com/EricZimmerman/JLECmd) → `jlecmd` | Done (`docs/plans/jlecmd.md`) |
+| [SrumECmd](https://github.com/EricZimmerman/Srum) → `srumecmd` | Done as far as can be checked without Windows (`docs/plans/srumecmd.md`) |
 
 The upstream commits each port was built from are in `docs/upstream.md`.
 
@@ -257,3 +258,17 @@ jlecmd -d /cases/host1 --csv /tmp/out --json /tmp/out -q
 jlecmd -f /cases/host1/f01b4d95cf55d32a.automaticDestinations-ms --fd
 jlecmd -d /cases/host1 --dumpTo /tmp/lnks -q
 ```
+
+## srumecmd
+
+A port of SrumECmd: the System Resource Usage Monitor database (`SRUDB.dat`) to CSV, with app run times, network use, and user and Wi-Fi profile names from an
+optional SOFTWARE hive. The original needs Windows' `esent.dll`; this reads the database itself with `ese-ez`, in place and without writing.
+
+```
+cargo build --release -p srumecmd
+srumecmd -f /cases/host1/SRUDB.dat -r /cases/host1/SOFTWARE --csv /tmp/out
+srumecmd -d /cases/host1 --csv /tmp/out
+```
+
+Transaction logs aren't replayed: a database that wasn't shut down cleanly is read as it is, with a warning. As the original can't run on Linux, it hasn't been compared
+as a whole with this port: `docs/plans/srumecmd.md` says what was checked instead.
