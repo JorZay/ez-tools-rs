@@ -34,7 +34,7 @@ RBCmd targets `net10.0` as well as `net472`, and runs here on .NET 10. `-d` diff
 - `$R` folders: links to folders are followed and a link's size is its own, not its target's. One failure loses the whole list.
 - INFO2's ANSI names: bytes over 0x7F are `?`.
 - `--dt` is .NET's `DateTimeOffset.ToString` in en-US: an empty format, and the standard ones, with U+202F before AM and PM, as ICU
-  has it here. `U` is an error for this type. This is `Timestamp::format_en_us` in `ez-common`.
+  has it here. `U` is an error for this type. This is `Timestamp::format` in `ez-common`; see `docs/cli-options.md`.
 
 ## Known differences
 
@@ -42,7 +42,6 @@ RBCmd targets `net10.0` as well as `net472`, and runs here on .NET 10. `-d` diff
   and RECmd and JLECmd's ports already do the same. Links to files are read.
 - A folder under `-d` that can't be read is named in the error. The Linux original names the `-d` folder instead, as it has already
   cleared the name when the folder is opened; the Windows code names the folder. Same files and exit code.
-- `--co false --co false` is accepted, the original refuses it. Other options with a value, given twice, are refused by both.
 - Banner, help and argument error texts are this port's. The console log's name has this port's version, and neither the console
   nor the log has .NET's stack traces.
 

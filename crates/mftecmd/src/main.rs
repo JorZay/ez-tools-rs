@@ -241,7 +241,10 @@ fn size_string(bytes: u64) -> String {
 }
 
 fn main() -> ExitCode {
-    let args = Args::parse();
+    let args = match ez_common::cli::parse_args::<Args>() {
+        Ok(a) => a,
+        Err(code) => return code,
+    };
     match run(args) {
         Ok(code) => code,
         Err(message) => {
@@ -541,6 +544,15 @@ fn mft_outputs(r: &mut Run, mft: &Mft, file: &Path) -> bool {
     if let Some(d) = &resident_dir {
         r.log.info(&format!("\tResident data will be saved to {}", d.display()));
         let _ = std::fs::create_dir_all(d);
+    }
+
+    // a --dt that .NET rejects fails on the first row
+    if csv.is_some() && Timestamp::check_format(&r.args.dt).is_err() {
+        if let Some(w) = &mut csv {
+            let _ = w.flush();
+        }
+        r.log.error(&format!("Error exporting data. Please report to saericzimmerman@gmail.com. Error: {}", ez_common::csv::WRITER_ERROR));
+        return false;
     }
 
     if body.is_some() || csv.is_some() || json.is_some() {
@@ -923,7 +935,9 @@ fn process_i30(r: &mut Run, file: &Path) -> bool {
     let p = out_name(r, &dir, &r.args.csvf, "$I30", "csv");
     r.log.info(&format!("\tCSV output will be saved to {}", p.display()));
     let dt = r.args.dt.clone();
-    let time = |raw: i64| Timestamp::from_filetime(raw).filter(|_| raw > 0).map(|t| t.format(&dt)).unwrap_or_default();
+    let bad_dt = Timestamp::check_format(&dt).is_err();
+    let used = if bad_dt { ez_common::csv::BAD_DATE } else { dt.as_str() };
+    let time = |raw: i64| Timestamp::from_filetime(raw).filter(|_| raw > 0).map(|t| t.format(used)).unwrap_or_default();
     let source = file.to_string_lossy().into_owned();
     let mut out = String::from("Offset,FromSlack,SelfMftEntry,SelfMftSequence,FileName,Flags,NameType,ParentMftEntry,ParentMftSequence,CreatedOn,ContentModifiedOn,RecordModifiedOn,LastAccessedOn,PhysicalSize,LogicalSize,SourceFile\r\n");
     for e in &i30.entries {
@@ -946,9 +960,18 @@ fn process_i30(r: &mut Run, file: &Path) -> bool {
             fi.logical_size.to_string(),
             source.clone(),
         ]));
+        if bad_dt && out.contains(ez_common::csv::BAD_DATE) {
+            break;
+        }
     }
+    let failed = bad_dt && out.contains(ez_common::csv::BAD_DATE);
+    ez_common::csv::cut_at_bad_date(&mut out);
     if let Err(e) = open_out(&p, true).and_then(|mut w| w.write_all(out.as_bytes()).and_then(|_| w.flush())) {
         r.log.error(&format!("Error writing {}: {e}", p.display()));
+        return false;
+    }
+    if failed {
+        r.log.error(&format!("Error exporting data. Please report to saericzimmerman@gmail.com. Error: {}", ez_common::csv::WRITER_ERROR));
         return false;
     }
     r.log.info("");
@@ -1043,11 +1066,22 @@ fn process_logfile(r: &mut Run, file: &Path) -> bool {
         let p = out_name(r, &dir, &r.args.csvf, "$LogFile", "csv");
         r.log.info(&format!("\tCSV output will be saved to {}", p.display()));
         let mut out = String::from(CSV_HEADER);
+        let bad_dt = Timestamp::check_format(&dt).is_err();
+        let used = if bad_dt { ez_common::csv::BAD_DATE } else { dt.as_str() };
+        let mut failed = false;
         for row in &all {
-            write_csv(&mut out, row, &dt);
+            write_csv(&mut out, row, used);
+            if bad_dt && out.contains(ez_common::csv::BAD_DATE) {
+                failed = true;
+                break;
+            }
         }
+        ez_common::csv::cut_at_bad_date(&mut out);
         if let Err(e) = open_out(&p, true).and_then(|mut w| w.write_all(out.as_bytes()).and_then(|_| w.flush())) {
             r.log.error(&format!("\nError exporting to CSV. Error: {e}"));
+            ok = false;
+        } else if failed {
+            r.log.error(&format!("Error exporting to CSV. Please report to saericzimmerman@gmail.com. Error: {}", ez_common::csv::WRITER_ERROR));
             ok = false;
         }
     }
@@ -1114,6 +1148,7 @@ fn process_j(r: &mut Run, file: &Path) -> bool {
         }
         let p = out_name(r, &dir, &r.args.csvf, "$J", "csv");
         r.log.info(&format!("\tCSV output will be saved to {}", p.display()));
+        let bad_dt = Timestamp::check_format(&dt).is_err();
         let mut out = String::from("Name,Extension,EntryNumber,SequenceNumber,ParentEntryNumber,ParentSequenceNumber,ParentPath,UpdateSequenceNumber,UpdateTimestamp,UpdateReasons,FileAttributes,OffsetToData,SourceFile\r\n");
         for (i, e) in entries.iter().enumerate() {
             out.push_str(&csv_line(&[
@@ -1125,15 +1160,22 @@ fn process_j(r: &mut Run, file: &Path) -> bool {
                 e.parent_file_reference.sequence_number.to_string(),
                 parent_paths.as_ref().map(|p| p[i].clone()).unwrap_or_default(),
                 e.update_sequence_number.to_string(),
-                time(e).format(&dt),
+                time(e).format(if bad_dt { ez_common::csv::BAD_DATE } else { &dt }),
                 flags_name(e.update_reasons as i64, UPDATE_REASON_NAMES).replace(", ", "|"),
                 flags_name(e.file_attributes as i64, FILE_ATTRIBUTE_NAMES).replace(", ", "|"),
                 e.offset_to_data.to_string(),
                 source.clone(),
             ]));
+            if bad_dt {
+                break;
+            }
         }
+        ez_common::csv::cut_at_bad_date(&mut out);
         if let Err(err) = open_out(&p, true).and_then(|mut w| w.write_all(out.as_bytes()).and_then(|_| w.flush())) {
             r.log.error(&format!("\nError exporting to CSV. Error: {err}"));
+            ok = false;
+        } else if bad_dt && !entries.is_empty() {
+            r.log.error(&format!("Error exporting to CSV. Please report to saericzimmerman@gmail.com. Error: {}", ez_common::csv::WRITER_ERROR));
             ok = false;
         }
     }

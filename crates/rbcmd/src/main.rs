@@ -25,7 +25,6 @@ const NEGATE_MIN: &str = "Negating the minimum value of a twos complement number
     after_help = "Examples:\n  rbcmd -f /tmp/INFO2\n  rbcmd -f '/tmp/$I3VPA17' --csv /tmp/csvOutput\n  rbcmd -d /tmp --csv /tmp/csvOutput"
 )]
 struct Args {
-    // an option with a value can only be given once, as in the original; a flag can be repeated
     /// Directory to recursively process. Either this or -f is required
     #[arg(short = 'd', value_name = "DIR")]
     directory: Option<String>,
@@ -35,7 +34,7 @@ struct Args {
     file: Option<String>,
 
     /// Only show the filename being processed vs all output. Useful to speed up exporting to JSON and/or CSV
-    #[arg(short = 'q', overrides_with = "quiet", action = ArgAction::Set, num_args = 0..=1, default_value_t = false, default_missing_value = "true", value_name = "BOOL")]
+    #[arg(short = 'q', action = ArgAction::Set, num_args = 0..=1, default_value_t = false, default_missing_value = "true", value_name = "BOOL")]
     quiet: bool,
 
     /// Directory to save CSV formatted results to
@@ -51,15 +50,15 @@ struct Args {
     dt: String,
 
     /// Show debug information during processing
-    #[arg(long, overrides_with = "debug", action = ArgAction::Set, num_args = 0..=1, default_value_t = false, default_missing_value = "true", value_name = "BOOL")]
+    #[arg(long, action = ArgAction::Set, num_args = 0..=1, default_value_t = false, default_missing_value = "true", value_name = "BOOL")]
     debug: bool,
 
     /// Show trace information during processing
-    #[arg(long, overrides_with = "trace", action = ArgAction::Set, num_args = 0..=1, default_value_t = false, default_missing_value = "true", value_name = "BOOL")]
+    #[arg(long, action = ArgAction::Set, num_args = 0..=1, default_value_t = false, default_missing_value = "true", value_name = "BOOL")]
     trace: bool,
 
     /// When true, save all console messages to <timestamp>_RBCmd_<version>_ConsoleLog.txt in the --csv directory. Use --co false to turn it off
-    #[arg(long, overrides_with = "co", action = ArgAction::Set, num_args = 0..=1, default_value_t = true, default_missing_value = "true", value_name = "BOOL")]
+    #[arg(long, action = ArgAction::Set, num_args = 0..=1, default_value_t = true, default_missing_value = "true", value_name = "BOOL")]
     co: bool,
 }
 
@@ -360,12 +359,9 @@ fn export(run: &mut Run, csv: &str, csvf: Option<&str>, stamp: &str) -> Result<(
 }
 
 fn main() -> ExitCode {
-    let args = match Args::try_parse() {
+    let args = match ez_common::cli::parse_args::<Args>() {
         Ok(a) => a,
-        Err(e) => {
-            let _ = e.print();
-            return if e.use_stderr() { ExitCode::FAILURE } else { ExitCode::SUCCESS };
-        }
+        Err(code) => return code,
     };
     let level = if args.trace {
         Level::Trace

@@ -8,6 +8,74 @@ use std::path::{Path, PathBuf};
 
 use crate::time::Timestamp;
 
+/// The command line, by the rules of the original tools' parser, which clap's alone don't give: an option with a value can
+/// only be given once and a flag can be repeated, a flag can be given a value (`--co false`, in any case), though not twice, and
+/// bad arguments exit with 1. An error or help is printed: the result is then the exit code
+pub fn parse_args<T: clap::Parser>() -> Result<T, std::process::ExitCode> {
+    use clap::ArgAction;
+    use std::process::ExitCode;
+    let command = T::command().args_override_self(true);
+    let mut args: Vec<String> = Vec::new();
+    let mut given: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    let raw: Vec<String> = std::env::args().collect();
+    args.extend(raw.first().cloned());
+    let mut next = 1;
+    while let Some(token) = raw.get(next).cloned() {
+        next += 1;
+        let (name, inline) = match token.split_once(['=', ':']) {
+            Some((name, value)) if name.starts_with('-') => (name.to_string(), Some(value.to_string())),
+            _ => (token.clone(), None),
+        };
+        let option = command.get_arguments().find(|a| {
+            name.strip_prefix("--").map_or_else(|| name.strip_prefix('-').is_some_and(|s| a.get_short().is_some_and(|c| s.len() == c.len_utf8() && s.starts_with(c))), |l| a.get_long() == Some(l))
+        });
+        let Some(option) = option else {
+            args.push(token);
+            continue;
+        };
+        let flag = matches!(option.get_action(), ArgAction::SetTrue) || option.get_num_args().is_some_and(|n| n.min_values() == 0);
+        let is_bool = |s: &str| s.eq_ignore_ascii_case("true") || s.eq_ignore_ascii_case("false");
+        let mut value = inline;
+        let mut consumed = value.is_some();
+        if value.is_none() {
+            if let Some(following) = raw.get(next).filter(|f| !flag || is_bool(f)) {
+                next += 1;
+                value = Some(following.clone());
+                consumed = true;
+            }
+        }
+        if consumed && matches!(option.get_action(), ArgAction::Set | ArgAction::SetTrue) {
+            let count = given.entry(name.clone()).or_default();
+            *count += 1;
+            if *count > 1 {
+                eprintln!("Option '{name}' expects a single argument but {count} were provided.");
+                return Err(ExitCode::FAILURE);
+            }
+        }
+        match (option.get_action(), value) {
+            // a plain flag takes no value in clap: only `true` sets it
+            (ArgAction::SetTrue, Some(v)) => {
+                if v.eq_ignore_ascii_case("true") {
+                    args.push(name);
+                } else if !v.eq_ignore_ascii_case("false") {
+                    eprintln!("Cannot parse argument '{v}' for option '{name}' as expected type 'System.Boolean'.");
+                    return Err(ExitCode::FAILURE);
+                }
+            }
+            (_, Some(v)) => {
+                args.push(name);
+                args.push(if flag && is_bool(&v) { v.to_ascii_lowercase() } else { v });
+            }
+            (_, None) => args.push(name),
+        }
+    }
+    let result = command.try_get_matches_from(args).and_then(|matches| T::from_arg_matches(&matches));
+    result.map_err(|e| {
+        let _ = e.print();
+        if e.use_stderr() { ExitCode::FAILURE } else { ExitCode::SUCCESS }
+    })
+}
+
 /// UTF-8's byte order mark, which EZ tools write at the start of their CSV and JSON files
 pub const BOM: &[u8] = "\u{FEFF}".as_bytes();
 

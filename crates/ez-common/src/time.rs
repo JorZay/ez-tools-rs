@@ -92,76 +92,60 @@ impl Timestamp {
         }
     }
 
-    /// Formats with a .NET custom date and time format string (as EvtxECmd's --dt), e.g. `yyyy-MM-dd HH:mm:ss.fffffff`.
-    /// The time is UTC, so offsets (z, zz, zzz, K) are +00:00.
+    /// DateTimeOffset.ToString(format) at offset 0 with the en-US culture, as the original tools' --dt: a custom format, one of
+    /// the standard ones or an empty one, as .NET has them on ICU (which puts U+202F before AM and PM). A format .NET
+    /// rejects (see [`check_format`](Self::check_format)) comes out as it is: tools check it first.
     pub fn format(self, format: &str) -> String {
-        let mut out = String::with_capacity(format.len() + 8);
-        format_into(self, format, &mut out);
+        let custom = standard_format(format).unwrap_or(format);
+        let mut out = String::with_capacity(custom.len() + 8);
+        format_custom(self, custom, &mut out);
         out
     }
 
-    /// DateTimeOffset.ToString(format) of this time at offset 0 with the en-US culture, for tools that take the format as
-    /// given and fail on a bad one: an empty format and the standard ones as .NET has them on ICU (which puts U+202F before
-    /// AM and PM), or .NET's error message
+    /// [`format`](Self::format), or .NET's error for a format it rejects
     pub fn format_en_us(self, format: &str) -> Result<String, &'static str> {
+        Self::check_format(format)?;
+        Ok(self.format(format))
+    }
+
+    /// Whether .NET takes a format: its error message when not
+    pub fn check_format(format: &str) -> Result<(), &'static str> {
         const BAD_FORMAT: &str = "Input string was not in a correct format.";
-        const BAD_QUOTE: &str = "Cannot find a matching quote character for the character '''.";
+        const BAD_QUOTE: &str = "Cannot find a matching quote character for the character '\''.";
         let chars: Vec<char> = format.chars().collect();
-        let custom = match chars.as_slice() {
-            [] => "M/d/yyyy h:mm:ss tt zzz",
-            [c] => match c {
-                'd' => "M/d/yyyy",
-                'D' => "dddd, MMMM d, yyyy",
-                'f' => "dddd, MMMM d, yyyy h:mm tt",
-                'F' => "dddd, MMMM d, yyyy h:mm:ss tt",
-                'g' => "M/d/yyyy h:mm tt",
-                'G' => "M/d/yyyy h:mm:ss tt",
-                'm' | 'M' => "MMMM d",
-                'o' | 'O' => "yyyy-MM-ddTHH:mm:ss.fffffffK",
-                'r' | 'R' => "ddd, dd MMM yyyy HH:mm:ss 'GMT'",
-                's' => "yyyy-MM-ddTHH:mm:ss",
-                't' => "h:mm tt",
-                'T' => "h:mm:ss tt",
-                'u' => "yyyy-MM-dd HH:mm:ssZ",
-                'y' | 'Y' => "MMMM yyyy",
-                _ => return Err(BAD_FORMAT),
-            },
-            _ => {
-                let mut i = 0;
-                while i < chars.len() {
-                    match chars[i] {
-                        'f' | 'F' => {
-                            let run = chars[i..].iter().take_while(|&&c| c == chars[i]).count();
-                            if run > 7 {
-                                return Err(BAD_FORMAT);
-                            }
-                            i += run;
-                        }
-                        quote @ ('\'' | '"') => {
-                            i += 1;
-                            loop {
-                                match chars.get(i) {
-                                    None => return Err(BAD_QUOTE),
-                                    Some('\\') if i + 1 >= chars.len() => return Err(BAD_FORMAT),
-                                    Some('\\') => i += 2,
-                                    Some(&c) if c == quote => break,
-                                    Some(_) => i += 1,
-                                }
-                            }
-                            i += 1;
-                        }
-                        '\\' if i + 1 >= chars.len() => return Err(BAD_FORMAT),
-                        '\\' => i += 2,
-                        '%' if chars.get(i + 1).is_none_or(|&c| c == '%') => return Err(BAD_FORMAT),
-                        _ => i += 1,
+        if chars.len() < 2 {
+            return standard_format(format).map(|_| ()).ok_or(BAD_FORMAT);
+        }
+        let mut i = 0;
+        while i < chars.len() {
+            match chars[i] {
+                'f' | 'F' => {
+                    let run = chars[i..].iter().take_while(|&&c| c == chars[i]).count();
+                    if run > 7 {
+                        return Err(BAD_FORMAT);
                     }
+                    i += run;
                 }
-                format
+                quote @ ('\'' | '"') => {
+                    i += 1;
+                    loop {
+                        match chars.get(i) {
+                            None => return Err(BAD_QUOTE),
+                            Some('\\') if i + 1 >= chars.len() => return Err(BAD_FORMAT),
+                            Some('\\') => i += 2,
+                            Some(&c) if c == quote => break,
+                            Some(_) => i += 1,
+                        }
+                    }
+                    i += 1;
+                }
+                '\\' if i + 1 >= chars.len() => return Err(BAD_FORMAT),
+                '\\' => i += 2,
+                '%' if chars.get(i + 1).is_none_or(|&c| c == '%') => return Err(BAD_FORMAT),
+                _ => i += 1,
             }
-        };
-        let mut out = String::with_capacity(custom.len() + 8);
-        format_custom(self, custom, "AD", &mut out);
-        Ok(out)
+        }
+        Ok(())
     }
 
     /// ISO 8601 with 7 decimals and Z, as EvtxECmd writes time stamps in JSON
@@ -343,34 +327,36 @@ const MONTH_NAMES: [&str; 12] = [
     "December",
 ];
 
-/// .NET custom date and time format specifiers (invariant culture)
-fn format_into(t: Timestamp, format: &str, out: &mut String) {
-    let chars: Vec<char> = format.chars().collect();
-
-    // a format of one character is a standard format in .NET; the common ones
-    if chars.len() == 1 {
-        let standard = match chars[0] {
-            'o' | 'O' => Some("yyyy-MM-ddTHH:mm:ss.fffffffK"),
-            's' => Some("yyyy-MM-ddTHH:mm:ss"),
-            'u' => Some("yyyy-MM-dd HH:mm:ssZ"),
-            'd' => Some("MM/dd/yyyy"),
-            'D' => Some("dddd, dd MMMM yyyy"),
-            'g' => Some("MM/dd/yyyy HH:mm"),
-            'G' => Some("MM/dd/yyyy HH:mm:ss"),
-            't' => Some("HH:mm"),
-            'T' => Some("HH:mm:ss"),
-            _ => None,
-        };
-        if let Some(s) = standard {
-            format_into(t, s, out);
-            return;
-        }
+/// What a format of no or one character stands for, in en-US. None for a longer format, or a character .NET rejects
+fn standard_format(format: &str) -> Option<&'static str> {
+    let mut chars = format.chars();
+    let Some(c) = chars.next() else {
+        return Some("M/d/yyyy h:mm:ss\u{202F}tt zzz");
+    };
+    if chars.next().is_some() {
+        return None;
     }
-    format_custom(t, format, "A.D.", out);
+    Some(match c {
+        'd' => "M/d/yyyy",
+        'D' => "dddd, MMMM d, yyyy",
+        'f' => "dddd, MMMM d, yyyy h:mm\u{202F}tt",
+        'F' => "dddd, MMMM d, yyyy h:mm:ss\u{202F}tt",
+        'g' => "M/d/yyyy h:mm\u{202F}tt",
+        'G' => "M/d/yyyy h:mm:ss\u{202F}tt",
+        'm' | 'M' => "MMMM d",
+        'o' | 'O' => "yyyy-MM-ddTHH:mm:ss.fffffffK",
+        'r' | 'R' => "ddd, dd MMM yyyy HH:mm:ss 'GMT'",
+        's' => "yyyy-MM-ddTHH:mm:ss",
+        't' => "h:mm\u{202F}tt",
+        'T' => "h:mm:ss\u{202F}tt",
+        'u' => "yyyy-MM-dd HH:mm:ssZ",
+        'y' | 'Y' => "MMMM yyyy",
+        _ => return None,
+    })
 }
 
-/// A format of several characters. `era` is what `g` writes, which depends on the culture
-fn format_custom(t: Timestamp, format: &str, era: &str, out: &mut String) {
+/// .NET's custom date and time format specifiers
+fn format_custom(t: Timestamp, format: &str, out: &mut String) {
     use std::fmt::Write;
     let p = t.parts();
     let chars: Vec<char> = format.chars().collect();
@@ -461,7 +447,7 @@ fn format_custom(t: Timestamp, format: &str, era: &str, out: &mut String) {
                     out.push_str("+00:00");
                 }
             }
-            'g' => out.push_str(era),
+            'g' => out.push_str("AD"),
             '\'' | '"' => {
                 // a quoted literal
                 let mut j = i + 1;

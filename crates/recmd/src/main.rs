@@ -158,7 +158,10 @@ struct Args {
 }
 
 fn main() -> ExitCode {
-    let args = Args::parse();
+    let args = match ez_common::cli::parse_args::<Args>() {
+        Ok(a) => a,
+        Err(code) => return code,
+    };
     // deep hives are walked recursively, as the library does
     let child = std::thread::Builder::new().stack_size(256 << 20).spawn(move || run(args)).expect("thread");
     match child.join() {
@@ -1145,6 +1148,11 @@ fn write_batch(args: &Args, bn: &str, rows: &[Row], run_time: Timestamp, log: &m
     log.info(&format!("Saving batch mode {} file to {}", ext.to_uppercase(), out.display()));
     let mut text = String::new();
     if ext == "csv" {
+        // a --dt that .NET rejects fails on the first row, with nothing written yet
+        if Timestamp::check_format(&args.dt).is_err() {
+            std::fs::File::create(&out).map_err(|e| e.to_string())?;
+            return Err(ez_common::csv::WRITER_ERROR.to_string());
+        }
         text.push_str(batch::CSV_HEADER);
         text.push_str(ez_common::csv::NEW_LINE);
         for r in rows {

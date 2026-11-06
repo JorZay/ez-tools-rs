@@ -86,11 +86,12 @@ fn exit_codes() {
 }
 
 #[test]
-fn an_option_given_twice_keeps_the_last() {
+fn an_option_given_twice_is_refused() {
     let base = folder("twice");
     let out = base.0.join("out");
     let r = run(&["-f", base.0.to_str().unwrap(), "--csv", out.to_str().unwrap(), "--co", "false", "--co", "false"]);
-    assert_eq!(r.status.code(), Some(0));
+    assert_eq!(r.status.code(), Some(1));
+    assert!(!out.exists());
 }
 
 #[test]

@@ -27,7 +27,6 @@ const INVARIANT_DATE: &str = "MM/dd/yyyy HH:mm:ss zzz";
 #[derive(Parser, Debug)]
 #[command(
     version,
-    args_override_self = true,
     after_help = "Examples:\n  amcacheparser -f /tmp/amcache/AmcacheWin10.hve --csv /tmp/out\n  amcacheparser -f /tmp/amcache/AmcacheWin10.hve -i --csv /tmp/out --csvf foo.csv\n  amcacheparser -f /tmp/amcache/AmcacheWin10.hve -w /tmp/whitelist.txt --csv /tmp/out\n  amcacheparser -f /tmp/Programs -i --csv /tmp/out    (Amcache.hve and the Inventory*.db databases)"
 )]
 struct Args {
@@ -151,7 +150,7 @@ fn read_lines(path: &str) -> Result<Vec<String>, Error> {
 }
 
 /// A CSV as CsvHelper writes it
-fn write_csv<T>(path: &Path, headers: &[&str], rows: impl Iterator<Item = T>, cell: impl Fn(&T, &str) -> String) -> Result<(), Error> {
+fn write_csv<T>(dt: &str, path: &Path, headers: &[&str], rows: impl Iterator<Item = T>, cell: impl Fn(&T, &str) -> String) -> Result<(), Error> {
     let file = File::create(path).map_err(|e| io_error(path, &e))?;
     let mut out = BufWriter::new(file);
     let mut line = String::new();
@@ -164,7 +163,14 @@ fn write_csv<T>(path: &Path, headers: &[&str], rows: impl Iterator<Item = T>, ce
     }
     line.push_str(ez_common::csv::NEW_LINE);
     write_line(&line)?;
+    let bad_dt = Timestamp::check_format(dt).is_err();
     for row in rows {
+        // every row has a date: a --dt that .NET rejects stops the run here
+        if bad_dt {
+            drop(write_line);
+            out.flush().map_err(|e| io_error(path, &e))?;
+            return Err(Error { message: ez_common::csv::WRITER_ERROR.to_string(), could_not_process: false });
+        }
         line.clear();
         for (i, h) in headers.iter().enumerate() {
             if i > 0 {
@@ -544,11 +550,11 @@ impl Output<'_> {
         }
         let program_files = am.programs_entries.iter().flat_map(|p| &p.file_entries).filter(|e| self.keeps(&e.sha1)).count();
 
-        write_csv(&self.path(hive_name, suffix, "UnassociatedFileEntries"), FILE_OLD_UNASSOCIATED_COLUMNS, clean.iter(), |e, c| file_old_cell(e, c, dt))?;
+        write_csv(dt, &self.path(hive_name, suffix, "UnassociatedFileEntries"), FILE_OLD_UNASSOCIATED_COLUMNS, clean.iter(), |e, c| file_old_cell(e, c, dt))?;
         if self.include {
-            write_csv(&self.path(hive_name, suffix, "ProgramEntries"), PROGRAM_OLD_COLUMNS, am.programs_entries.iter(), |p, c| program_old_cell(p, c, dt))?;
+            write_csv(dt, &self.path(hive_name, suffix, "ProgramEntries"), PROGRAM_OLD_COLUMNS, am.programs_entries.iter(), |p, c| program_old_cell(p, c, dt))?;
             let associated = am.programs_entries.iter().flat_map(|p| &p.file_entries).filter(|e| self.keeps(&e.sha1));
-            write_csv(&self.path(hive_name, suffix, "AssociatedFileEntries"), FILE_OLD_ASSOCIATED_COLUMNS, associated, |e, c| file_old_cell(e, c, dt))?;
+            write_csv(dt, &self.path(hive_name, suffix, "AssociatedFileEntries"), FILE_OLD_ASSOCIATED_COLUMNS, associated, |e, c| file_old_cell(e, c, dt))?;
         }
 
         log.blank();
@@ -586,17 +592,17 @@ impl Output<'_> {
         }
         let program_files = am.programs_entries.iter().flat_map(|p| &p.file_entries).filter(|e| self.keeps(&e.sha1)).count();
 
-        write_csv(&self.path(hive_name, suffix, "UnassociatedFileEntries"), FILE_NEW_COLUMNS, clean.iter(), |e, c| file_new_cell(e, c, dt))?;
+        write_csv(dt, &self.path(hive_name, suffix, "UnassociatedFileEntries"), FILE_NEW_COLUMNS, clean.iter(), |e, c| file_new_cell(e, c, dt))?;
         if self.include {
-            write_csv(&self.path(hive_name, suffix, "ProgramEntries"), PROGRAM_NEW_COLUMNS, am.programs_entries.iter(), |p, c| program_new_cell(p, c, dt))?;
+            write_csv(dt, &self.path(hive_name, suffix, "ProgramEntries"), PROGRAM_NEW_COLUMNS, am.programs_entries.iter(), |p, c| program_new_cell(p, c, dt))?;
             let associated = am.programs_entries.iter().flat_map(|p| &p.file_entries).filter(|e| self.keeps(&e.sha1));
-            write_csv(&self.path(hive_name, suffix, "AssociatedFileEntries"), FILE_NEW_COLUMNS, associated, |e, c| file_new_cell(e, c, dt))?;
+            write_csv(dt, &self.path(hive_name, suffix, "AssociatedFileEntries"), FILE_NEW_COLUMNS, associated, |e, c| file_new_cell(e, c, dt))?;
         }
-        write_csv(&self.path(hive_name, suffix, "ShortCuts"), SHORTCUT_COLUMNS, am.short_cuts.iter(), |s, c| shortcut_cell(s, c, dt))?;
-        write_csv(&self.path(hive_name, suffix, "DriverBinaries"), DRIVER_BINARY_COLUMNS, am.drive_binaries.iter(), |b, c| driver_binary_cell(b, c, dt))?;
-        write_csv(&self.path(hive_name, suffix, "DeviceContainers"), DEVICE_CONTAINER_COLUMNS, am.device_containers.iter(), |d, c| device_container_cell(d, c, dt))?;
-        write_csv(&self.path(hive_name, suffix, "DriverPackages"), DRIVER_PACKAGE_COLUMNS, am.driver_packages.iter(), |p, c| driver_package_cell(p, c, dt))?;
-        write_csv(&self.path(hive_name, suffix, "DevicePnps"), DEVICE_PNP_COLUMNS, am.device_pnps.iter(), |p, c| device_pnp_cell(p, c, dt))?;
+        write_csv(dt, &self.path(hive_name, suffix, "ShortCuts"), SHORTCUT_COLUMNS, am.short_cuts.iter(), |s, c| shortcut_cell(s, c, dt))?;
+        write_csv(dt, &self.path(hive_name, suffix, "DriverBinaries"), DRIVER_BINARY_COLUMNS, am.drive_binaries.iter(), |b, c| driver_binary_cell(b, c, dt))?;
+        write_csv(dt, &self.path(hive_name, suffix, "DeviceContainers"), DEVICE_CONTAINER_COLUMNS, am.device_containers.iter(), |d, c| device_container_cell(d, c, dt))?;
+        write_csv(dt, &self.path(hive_name, suffix, "DriverPackages"), DRIVER_PACKAGE_COLUMNS, am.driver_packages.iter(), |p, c| driver_package_cell(p, c, dt))?;
+        write_csv(dt, &self.path(hive_name, suffix, "DevicePnps"), DEVICE_PNP_COLUMNS, am.device_pnps.iter(), |p, c| device_pnp_cell(p, c, dt))?;
 
         log.blank();
         if suffix.is_empty() {
@@ -870,12 +876,9 @@ impl Run<'_> {
 }
 
 fn main() -> ExitCode {
-    let args = match Args::try_parse() {
+    let args = match ez_common::cli::parse_args::<Args>() {
         Ok(a) => a,
-        Err(e) => {
-            let _ = e.print();
-            return if e.use_stderr() { ExitCode::FAILURE } else { ExitCode::SUCCESS };
-        }
+        Err(code) => return code,
     };
     let start = Instant::now();
     let level = if args.trace {

@@ -131,7 +131,10 @@ struct Args {
 }
 
 fn main() -> ExitCode {
-    let args = Args::parse();
+    let args = match ez_common::cli::parse_args::<Args>() {
+        Ok(a) => a,
+        Err(code) => return code,
+    };
     match run(args) {
         Ok(code) => code,
         Err(message) => {

@@ -28,7 +28,6 @@ const JSON_DATE_FORMAT: &str = "yyyy-MM-ddTHH:mm:ss.fffffffZ";
 #[derive(Parser, Debug)]
 #[command(
     version,
-    args_override_self = true,
     after_help = "Examples:\n  lecmd -f /tmp/foobar.lnk\n  lecmd -f /tmp/somelink.lnk --json /tmp/jsonOutput --pretty\n  lecmd -d /tmp --csv /tmp/out --html /tmp/out --xml /tmp/xml -q\n  lecmd -f \"/tmp/some other link.lnk\" --nid --neb\n  lecmd -d /tmp --all"
 )]
 struct Args {
@@ -1012,10 +1011,18 @@ fn export(files: &[LnkFile], args: &Args, stamp: &str, macs: &HashMap<String, St
         let path = combine(&folder, "index.xhtml");
         log.info(&format!("Saving HTML output to {path}"));
         let mut w = BufWriter::new(File::create(&path).map_err(|e| fail(e, &path))?);
-        w.write_all("\u{feff}<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<?xml-stylesheet href=\"normalize.css\"?>\n<?xml-stylesheet href=\"style.css\"?>\n<document>".as_bytes()).map_err(|e| fail(e, &path))?;
+        w.write_all("\u{feff}<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<?xml-stylesheet href=\"normalize.css\"?>\n<?xml-stylesheet href=\"style.css\"?>\n".as_bytes()).map_err(|e| fail(e, &path))?;
         out.xhtml = Some(w);
     }
+    let mut in_document = false;
     for file in files {
+        // a --dt that .NET rejects fails each record, and nothing of it is written
+        if let Err(message) = ez_common::Timestamp::check_format(&args.dt) {
+            *export_errors += 1;
+            let source = file.source_file.as_deref().unwrap_or_default();
+            log.block(Level::Error, &format!("Error building output record for {source}. It is missing from the exported files. Error: {message}\nSystem.FormatException: {message}"));
+            continue;
+        }
         let o = csv_format(file, &args.dt, macs, log);
         if let Some(w) = &mut out.csv {
             if let Err(e) = w.write_all(o.csv_line().as_bytes()) {
@@ -1036,6 +1043,10 @@ fn export(files: &[LnkFile], args: &Args, stamp: &str, macs: &HashMap<String, St
             }
         }
         if let Some(w) = &mut out.xhtml {
+            if !in_document {
+                in_document = true;
+                w.write_all(b"<document>").map_err(|e| (e.to_string(), io_exception(&e).to_string()))?;
+            }
             w.write_all(xhtml_container(&o).as_bytes()).map_err(|e| (e.to_string(), io_exception(&e).to_string()))?;
         }
         if let Some(xml) = given(&args.xml) {
@@ -1051,7 +1062,8 @@ fn export(files: &[LnkFile], args: &Args, stamp: &str, macs: &HashMap<String, St
         w.flush().map_err(|e| (e.to_string(), io_exception(&e).to_string()))?;
     }
     if let Some(mut w) = out.xhtml {
-        w.write_all(b"\n</document>").and_then(|()| w.flush()).map_err(|e| (e.to_string(), io_exception(&e).to_string()))?;
+        let end: &[u8] = if in_document { b"\n</document>" } else { b"<document />" };
+        w.write_all(end).and_then(|()| w.flush()).map_err(|e| (e.to_string(), io_exception(&e).to_string()))?;
     }
     Ok(())
 }
@@ -1113,12 +1125,9 @@ fn help_and_warning(log: &mut Logger, message: &str) -> ExitCode {
 }
 
 fn main() -> ExitCode {
-    let args = match Args::try_parse() {
+    let args = match ez_common::cli::parse_args::<Args>() {
         Ok(a) => a,
-        Err(e) => {
-            let _ = e.print();
-            return if e.use_stderr() { ExitCode::FAILURE } else { ExitCode::SUCCESS };
-        }
+        Err(code) => return code,
     };
     let macs = load_macs();
     let active_format = if args.mp { PRECISE_TIME_FORMAT.to_string() } else { args.dt.clone() };

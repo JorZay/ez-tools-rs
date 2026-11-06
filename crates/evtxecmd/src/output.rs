@@ -13,13 +13,14 @@ pub struct Writer {
     csv: Option<Box<dyn Write>>,
     json: Option<Box<dyn Write>>,
     date_format: String,
+    date_format_ok: bool,
     full_json: bool,
     buf: String,
 }
 
 impl Writer {
     pub fn create(csv: Option<&Path>, json: Option<&Path>, date_format: &str, full_json: bool) -> Result<Writer, String> {
-        let mut w = Writer { csv: None, json: None, date_format: date_format.to_string(), full_json, buf: String::new() };
+        let mut w = Writer { csv: None, json: None, date_format: date_format.to_string(), date_format_ok: ez_common::Timestamp::check_format(date_format).is_ok(), full_json, buf: String::new() };
         if let Some(p) = csv {
             let mut f = open(p)?;
             let header = format!("{CSV_HEADER}{CSV_NEW_LINE}");
@@ -53,7 +54,10 @@ impl RowSink for Writer {
         };
         if let Some(f) = &mut self.csv {
             self.buf.clear();
-            write_csv_row(&mut self.buf, row, &source, &self.date_format);
+            // a --dt that .NET rejects fails every record: the CSV keeps its header
+            if self.date_format_ok {
+                write_csv_row(&mut self.buf, row, &source, &self.date_format);
+            }
             f.write_all(self.buf.as_bytes())?;
         }
         if let Some(f) = &mut self.json {

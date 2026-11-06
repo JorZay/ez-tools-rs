@@ -27,7 +27,6 @@ const REGF: &[u8; 4] = b"regf";
 #[derive(Parser, Debug)]
 #[command(
     version,
-    args_override_self = true,
     after_help = "Examples:\n  rla -f '/cases/host1/UsrClass 1.dat' --out /tmp/out\n  rla -d /cases/host1 --out /tmp/out"
 )]
 struct Args {
@@ -288,12 +287,9 @@ fn error_processing(hive_path: &str, failure: Failure, log: &mut Logger) -> Outc
 }
 
 fn main() -> ExitCode {
-    let args = match Args::try_parse() {
+    let args = match ez_common::cli::parse_args::<Args>() {
         Ok(a) => a,
-        Err(e) => {
-            let _ = e.print();
-            return if e.use_stderr() { ExitCode::FAILURE } else { ExitCode::SUCCESS };
-        }
+        Err(code) => return code,
     };
     let level = if args.trace {
         Level::Trace

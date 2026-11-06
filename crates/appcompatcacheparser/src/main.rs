@@ -21,7 +21,6 @@ const COLUMNS: [&str; 8] = ["ControlSet", "CacheEntryPosition", "Path", "LastMod
 #[derive(Parser, Debug)]
 #[command(
     version,
-    args_override_self = true,
     after_help = "Examples:\n  appcompatcacheparser -f /cases/host1/SYSTEM --csv /tmp/out -t -c 2\n  appcompatcacheparser -f /cases/host1/SYSTEM --csv /tmp/out --csvf results.csv"
 )]
 struct Args {
@@ -171,6 +170,11 @@ fn write_results(am: &AppCompatCache, args: &Args, file: &str, csv: &str, stamp:
         }
         // entries from slack come after the cache's, in the same order
         for entry in sorted(&cache.entries, args.sort).into_iter().chain(sorted(&cache.slack_entries, args.sort)) {
+            // a --dt that .NET rejects: what's whole so far stays, the row it fails on doesn't
+            if entry.last_modified_time_utc.is_some() && ez_common::Timestamp::check_format(&args.dt).is_err() {
+                out.write_all(line.as_bytes()).and_then(|()| out.flush()).map_err(|e| io_error(&out_file, &e))?;
+                return Err(Error { message: ez_common::csv::WRITER_ERROR.to_string(), kind: ErrorKind::Other });
+            }
             let key = entry.key();
             let duplicate = keys.contains(&key);
             keys.insert(key);
@@ -197,12 +201,9 @@ fn write_results(am: &AppCompatCache, args: &Args, file: &str, csv: &str, stamp:
 }
 
 fn main() -> ExitCode {
-    let args = match Args::try_parse() {
+    let args = match ez_common::cli::parse_args::<Args>() {
         Ok(a) => a,
-        Err(e) => {
-            let _ = e.print();
-            return if e.use_stderr() { ExitCode::FAILURE } else { ExitCode::SUCCESS };
-        }
+        Err(code) => return code,
     };
     let level = if args.trace {
         Level::Trace
