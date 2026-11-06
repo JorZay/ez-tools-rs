@@ -182,6 +182,7 @@ impl Row {
     /// GetCsvFormat: Err where the file has no header
     fn new(pf: &Prefetch, dt: &str) -> Result<Row, String> {
         let header = pf.header.as_ref().ok_or(NO_HEADER)?;
+        Timestamp::check_format(dt)?;
         let mut row = Row {
             source_filename: pf.source_filename.clone(),
             source_created: pf.source_times.created.format(dt),
@@ -310,13 +311,9 @@ struct Run {
 }
 
 fn main() -> ExitCode {
-    match Args::try_parse() {
+    match ez_common::cli::parse_args::<Args>() {
         Ok(args) => run(args),
-        // bad arguments exit with 1, as the original's
-        Err(e) => {
-            let _ = e.print();
-            if e.use_stderr() { ExitCode::FAILURE } else { ExitCode::SUCCESS }
-        }
+        Err(code) => code,
     }
 }
 

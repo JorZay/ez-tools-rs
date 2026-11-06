@@ -424,6 +424,7 @@ dependencies = [
 name = "ez-common"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "icu_collator",
 ]
 

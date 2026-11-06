@@ -26,7 +26,6 @@ const STAMP: &str = "yyyyMMddHHmmssffffff";
 #[derive(Parser, Debug)]
 #[command(
     version,
-    args_override_self = true,
     after_help = "Examples:\n  sqlecmd -f /tmp/someFile.db --csv /tmp/out\n  sqlecmd -d /tmp/evidence --csv /tmp/out\n  sqlecmd -d /tmp/evidence --hunt --csv /tmp/out\n  sqlecmd -d /tmp/evidence --csv /tmp/out --ifn"
 )]
 struct Args {
@@ -624,12 +623,9 @@ fn make_folder(log: &mut Logger, folder: &str) -> bool {
 }
 
 fn main() -> ExitCode {
-    let args = match Args::try_parse() {
+    let args = match ez_common::cli::parse_args::<Args>() {
         Ok(a) => a,
-        Err(e) => {
-            let _ = e.print();
-            return if e.use_stderr() { ExitCode::FAILURE } else { ExitCode::SUCCESS };
-        }
+        Err(code) => return code,
     };
     let level = if args.trace {
         Level::Trace

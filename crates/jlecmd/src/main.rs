@@ -31,7 +31,6 @@ const AUTOMATIC_SIGNATURE: u64 = 0xe11a_b1a1_e011_cfd0;
 #[derive(Parser, Debug)]
 #[command(
     version,
-    args_override_self = true,
     after_help = "Examples:\n  jlecmd -f /tmp/f01b4d95cf55d32a.customDestinations-ms --mp\n  jlecmd -f /tmp/f01b4d95cf55d32a.automaticDestinations-ms --json /tmp/jsonOutput --pretty\n  jlecmd -d /tmp/CustomDestinations --csv /tmp/out --html /tmp/out -q\n  jlecmd -d /tmp/Recent --dt \"ddd yyyy MM dd HH:mm:ss.fff\""
 )]
 struct Args {
@@ -134,6 +133,11 @@ struct Failure {
 }
 
 impl Failure {
+    /// A --dt that .NET rejects: it fails on the first date, with the source file's
+    fn check_format(format: &str) -> Result<(), Failure> {
+        Timestamp::check_format(format).map_err(|message| Failure { message: message.to_string(), exception: "System.FormatException".to_string(), read_error: false })
+    }
+
     fn null_reference() -> Failure {
         Failure { message: NULL_REFERENCE.to_string(), exception: "System.NullReferenceException".to_string(), read_error: false }
     }
@@ -492,6 +496,7 @@ fn source_columns(path: &str, format: &str) -> [String; 4] {
 
 /// GetAutoCsvFormat
 fn auto_csv(auto: &AutomaticDestination, format: &str, with_dir: bool, log: &mut Logger) -> Result<Vec<AutoCsv>, Failure> {
+    Failure::check_format(format)?;
     let source = source_columns(&auto.source_file, format);
     let mut rows = Vec::new();
     for entry in &auto.entries {
@@ -585,6 +590,7 @@ fn auto_csv(auto: &AutomaticDestination, format: &str, with_dir: bool, log: &mut
 
 /// GetCustomCsvFormat
 fn custom_csv(custom: &CustomDestination, format: &str) -> Result<Vec<CustomCsv>, Failure> {
+    Failure::check_format(format)?;
     let source = source_columns(&custom.source_file, format);
     let mut rows = Vec::new();
     for entry in &custom.entries {
@@ -1583,12 +1589,9 @@ fn dump_lnks(work: &Work, dump_to: &str, with_dir: bool, log: &mut Logger) -> st
 }
 
 fn main() -> ExitCode {
-    let args = match Args::try_parse() {
+    let args = match ez_common::cli::parse_args::<Args>() {
         Ok(a) => a,
-        Err(e) => {
-            let _ = e.print();
-            return if e.use_stderr() { ExitCode::FAILURE } else { ExitCode::SUCCESS };
-        }
+        Err(code) => return code,
     };
     let format = if args.mp { PRECISE_TIME_FORMAT.to_string() } else { args.dt.clone() };
     let level = if args.trace {
