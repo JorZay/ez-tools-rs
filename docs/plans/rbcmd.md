@@ -59,7 +59,7 @@ exit code. `tools/gen-rbcmd-cases.py` builds the generated files.
 | Upstream's 12 samples, each kind of option | Formats 1 and 2, INFO2 with 800 byte records, removed records |
 | 117 generated files | Sizes around each unit, odd names, all length and time limits, short files, unknown headers, record sizes, `$R` folders |
 | 4 sets of 600 damaged files (real samples, generated files) | Every parse error and failure path; in one set, 119 files of 600 parse cleanly |
-| 19 `--dt` formats (standard, custom, invalid) on two sets | All formats and both .NET errors |
+| 38 `--dt` formats (standard, custom, invalid) on two sets | All formats and both .NET errors |
 | Options and failures | No arguments, repeats, bad values, relative and `..` paths, file in the way, read-only folder |
 
 All messages but one were checked as reached in the original's output: `Unsupported $I format` can't be reached through the tool,
