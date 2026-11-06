@@ -15,9 +15,9 @@ How `--dt` and the command line itself behave in all the ports, compared with th
 | Tool | Files left | Exit code |
 |---|---|---|
 | RBCmd | CSV with only its header | 0 |
-| AmcacheParser | Header of the first file with rows, no later files | 0 |
-| AppCompatCacheParser | Header, then whole rows up to the first date | 0 |
-| EvtxECmd | CSV with only its header (JSON isn't affected) | 0 |
+| AmcacheParser | Header of the first file, no later files | 0 |
+| AppCompatCacheParser | CSV with only its header | 0 |
+| EvtxECmd | CSV with only its header | 0 |
 | PECmd | CSV, time line, JSON and XHTML `index.xhtml` empty | 1 |
 | JLECmd | CSV and `index.xhtml` empty; JSON complete, as it comes first | 1 |
 | LECmd | CSV with only its header, JSON empty, no XML, `<document />` in XHTML | 1 |
@@ -47,5 +47,6 @@ The other 21 are known:
 - `mftecmd --vss` (3): the Linux original stops with `COM is not supported`; the port ignores it and goes on.
 - `evtxecmd` (18): the port's command line is its own by design. It takes several `-f` and `-d`, and has no `--met`, `--vss`, `--dedupe` or `--co`.
 
-Not compared, for lack of a sample: `$I30` and `$SDS` with MFTECmd (`$SDS` has no dates; `$I30` follows the same code as `$J`). Default formats are in the runs
-above without `--dt`, and aren't changed by this.
+Not compared, for lack of a sample: `$I30` and `$SDS` with MFTECmd (`$SDS` has no dates; `$I30` follows the same code as `$J`). Not compared with a bad `--dt`:
+EvtxECmd's JSON, and files with rows that have no date before the first that has one (the ports keep such whole rows, by reading how `$LogFile` fails). The
+comparison used one sample of each kind, not whole extractions.
