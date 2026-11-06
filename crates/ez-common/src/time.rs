@@ -100,6 +100,70 @@ impl Timestamp {
         out
     }
 
+    /// DateTimeOffset.ToString(format) of this time at offset 0 with the en-US culture, for tools that take the format as
+    /// given and fail on a bad one: an empty format and the standard ones as .NET has them on ICU (which puts U+202F before
+    /// AM and PM), or .NET's error message
+    pub fn format_en_us(self, format: &str) -> Result<String, &'static str> {
+        const BAD_FORMAT: &str = "Input string was not in a correct format.";
+        const BAD_QUOTE: &str = "Cannot find a matching quote character for the character '''.";
+        let chars: Vec<char> = format.chars().collect();
+        let custom = match chars.as_slice() {
+            [] => "M/d/yyyy h:mm:ss tt zzz",
+            [c] => match c {
+                'd' => "M/d/yyyy",
+                'D' => "dddd, MMMM d, yyyy",
+                'f' => "dddd, MMMM d, yyyy h:mm tt",
+                'F' => "dddd, MMMM d, yyyy h:mm:ss tt",
+                'g' => "M/d/yyyy h:mm tt",
+                'G' => "M/d/yyyy h:mm:ss tt",
+                'm' | 'M' => "MMMM d",
+                'o' | 'O' => "yyyy-MM-ddTHH:mm:ss.fffffffK",
+                'r' | 'R' => "ddd, dd MMM yyyy HH:mm:ss 'GMT'",
+                's' => "yyyy-MM-ddTHH:mm:ss",
+                't' => "h:mm tt",
+                'T' => "h:mm:ss tt",
+                'u' => "yyyy-MM-dd HH:mm:ssZ",
+                'y' | 'Y' => "MMMM yyyy",
+                _ => return Err(BAD_FORMAT),
+            },
+            _ => {
+                let mut i = 0;
+                while i < chars.len() {
+                    match chars[i] {
+                        'f' | 'F' => {
+                            let run = chars[i..].iter().take_while(|&&c| c == chars[i]).count();
+                            if run > 7 {
+                                return Err(BAD_FORMAT);
+                            }
+                            i += run;
+                        }
+                        quote @ ('\'' | '"') => {
+                            i += 1;
+                            loop {
+                                match chars.get(i) {
+                                    None => return Err(BAD_QUOTE),
+                                    Some('\\') if i + 1 >= chars.len() => return Err(BAD_FORMAT),
+                                    Some('\\') => i += 2,
+                                    Some(&c) if c == quote => break,
+                                    Some(_) => i += 1,
+                                }
+                            }
+                            i += 1;
+                        }
+                        '\\' if i + 1 >= chars.len() => return Err(BAD_FORMAT),
+                        '\\' => i += 2,
+                        '%' if chars.get(i + 1).is_none_or(|&c| c == '%') => return Err(BAD_FORMAT),
+                        _ => i += 1,
+                    }
+                }
+                format
+            }
+        };
+        let mut out = String::with_capacity(custom.len() + 8);
+        format_custom(self, custom, "AD", &mut out);
+        Ok(out)
+    }
+
     /// ISO 8601 with 7 decimals and Z, as EvtxECmd writes time stamps in JSON
     pub fn to_json_string(self) -> String {
         self.format("yyyy-MM-ddTHH:mm:ss.fffffffZ")
@@ -281,10 +345,7 @@ const MONTH_NAMES: [&str; 12] = [
 
 /// .NET custom date and time format specifiers (invariant culture)
 fn format_into(t: Timestamp, format: &str, out: &mut String) {
-    use std::fmt::Write;
-    let p = t.parts();
     let chars: Vec<char> = format.chars().collect();
-    let mut i = 0;
 
     // a format of one character is a standard format in .NET; the common ones
     if chars.len() == 1 {
@@ -305,13 +366,25 @@ fn format_into(t: Timestamp, format: &str, out: &mut String) {
             return;
         }
     }
+    format_custom(t, format, "A.D.", out);
+}
+
+/// A format of several characters. `era` is what `g` writes, which depends on the culture
+fn format_custom(t: Timestamp, format: &str, era: &str, out: &mut String) {
+    use std::fmt::Write;
+    let p = t.parts();
+    let chars: Vec<char> = format.chars().collect();
+    let mut i = 0;
+    // %x is x alone, whatever follows it
+    let mut alone = false;
 
     while i < chars.len() {
         let c = chars[i];
         let mut run = 1;
-        while i + run < chars.len() && chars[i + run] == c {
+        while !alone && i + run < chars.len() && chars[i + run] == c {
             run += 1;
         }
+        alone = false;
         match c {
             'y' => {
                 let y = p.year;
@@ -388,7 +461,7 @@ fn format_into(t: Timestamp, format: &str, out: &mut String) {
                     out.push_str("+00:00");
                 }
             }
-            'g' => out.push_str("A.D."),
+            'g' => out.push_str(era),
             '\'' | '"' => {
                 // a quoted literal
                 let mut j = i + 1;
@@ -411,6 +484,7 @@ fn format_into(t: Timestamp, format: &str, out: &mut String) {
             }
             '%' => {
                 i += 1;
+                alone = true;
                 continue;
             }
             _ => {
@@ -426,6 +500,23 @@ fn format_into(t: Timestamp, format: &str, out: &mut String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn en_us_formats() {
+        let t = Timestamp::from_parts(2020, 1, 2, 15, 4, 5, 0).unwrap();
+        let f = |format: &str| t.format_en_us(format);
+        assert_eq!(f("").unwrap(), "1/2/2020 3:04:05\u{202F}PM +00:00");
+        assert_eq!(f("G").unwrap(), "1/2/2020 3:04:05\u{202F}PM");
+        assert_eq!(f("D").unwrap(), "Thursday, January 2, 2020");
+        assert_eq!(f("r").unwrap(), "Thu, 02 Jan 2020 15:04:05 GMT");
+        assert_eq!(f("yyyy-MM-dd gg").unwrap(), "2020-01-02 AD");
+        assert_eq!(f("%dd").unwrap(), "22");
+        assert_eq!(f("FFFFFFF").unwrap(), "");
+        for bad in ["x", "U", "%", "%%", "\\", "ffffffff", "yyyy\\", "yyyy%"] {
+            assert_eq!(f(bad), Err("Input string was not in a correct format."), "{bad}");
+        }
+        assert_eq!(f("yyyy'"), Err("Cannot find a matching quote character for the character '''."));
+    }
 
     #[test]
     fn filetime_round_trip() {

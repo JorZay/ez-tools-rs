@@ -15,6 +15,7 @@ Each tool is a library (which never prints or exits, so other programs can use i
 | [SQLECmd](https://github.com/EricZimmerman/SQLECmd) → `sqlecmd` | Done, uses the original's maps unchanged (`docs/plans/sqlecmd.md`) |
 | [LECmd](https://github.com/EricZimmerman/LECmd) → `lecmd` | Done (`docs/plans/lecmd.md`) |
 | [JLECmd](https://github.com/EricZimmerman/JLECmd) → `jlecmd` | Done (`docs/plans/jlecmd.md`) |
+| [RBCmd](https://github.com/EricZimmerman/RBCmd) → `rbcmd` | Done (`docs/plans/rbcmd.md`) |
 
 The upstream commits each port was built from are in `docs/upstream.md`.
 
@@ -256,4 +257,15 @@ cargo build --release -p jlecmd
 jlecmd -d /cases/host1 --csv /tmp/out --json /tmp/out -q
 jlecmd -f /cases/host1/f01b4d95cf55d32a.automaticDestinations-ms --fd
 jlecmd -d /cases/host1 --dumpTo /tmp/lnks -q
+```
+
+## rbcmd
+
+A port of RBCmd: Recycle Bin files (`$I` from Vista on, `INFO2` from Windows 95 to XP/2003) to the console and CSV, with the files of deleted
+folders listed from their `$R` folder. `tools/parity-rbcmd.sh` compares with the original; `docs/plans/rbcmd.md` lists the quirks kept and the differences.
+
+```
+cargo build --release -p rbcmd
+rbcmd -d '/cases/host1/$Recycle.Bin' --csv /tmp/out -q
+rbcmd -f '/cases/host1/$I3VPA17'
 ```
