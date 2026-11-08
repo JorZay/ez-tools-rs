@@ -14,22 +14,30 @@ port is brought up to date.
 | `lecmd` | EricZimmerman/LECmd | `b5bbf29e4b58384fe7bd4384cb4851960c31dc83` | | 2026.10.4 | Exact |
 | `jlecmd` | EricZimmerman/JLECmd | `256962fcb3690d779faba11726dd63ee500ae2a7` | 2026-10-29 | 2026.10.6 | Exact |
 | `jumplist-ez` | EricZimmerman/JumpList | `c125c8e` (tag 2026.10.10) | 2026-10-29 | 2026.10.10 | Exact |
-| `olecf-ez` | EricZimmerman/OleCf | `afd5ee9` (tag 2026.10.1, not HEAD) | 2026-10-15 | 2026.10.1 | Exact |
+| `olecf-ez` | EricZimmerman/OleCf | `afd5ee9` (tag 2026.10.1; the 3 later commits change only tests) | 2026-10-15 | 2026.10.1 | Exact |
 | `rbcmd`, `recyclebin-ez` | EricZimmerman/RBCmd | `f2ed07ab4634064e7dbc02a1155fd70b7ff3f51b` | 2026-10-25 | 2026.10.1 | Exact |
 | `srumecmd`, `srum-ez` | EricZimmerman/Srum | `6dbb636b4fe734874c3439e1f0db5cb7dce618ab` | 2026-10-25 | 2026.10.1 | Exact |
 | `recentfilecacheparser`, `recentfilecache-ez` | EricZimmerman/RecentFileCacheParser | `f953a6028c09a57006be1fec365a69cda7c87acf` | 2026-10-25 | 2026.10.2 | Exact |
 | `wxtcmd`, `activitiescache-ez` | EricZimmerman/WxTCmd | `5677ea8a6e38e9d9f66970e90b5fb509bdfe06be` | 2026-10-25 | 2026.10.1 (GuidMapping 2026.10.2, Microsoft.Data.Sqlite 10.0.13, SQLite 3.53.3) | Exact |
 | `sumecmd`, `sum-ez` | EricZimmerman/Sum | `d2f5cb3c644654d17bb51c22acbc8e6289e52237` | 2026-10-25 | 2026.10.1 | Exact |
 | `lnk-ez` | EricZimmerman/Lnk | `dab1c8ab9c1c18d2cf89a4938ab95794d17d3a44` | | 2026.10.11 | Exact |
-| `shellitems-ez` | EricZimmerman/ExtensionBlocks | `897bbe3` (not HEAD) | | 2026.10.9 | Exact |
+| `shellitems-ez` | EricZimmerman/ExtensionBlocks | `897bbe3` (the later commit changes only CLAUDE.md) | | 2026.10.9 | Exact |
 | `recmd` | EricZimmerman/RECmd | `8d1955910964209500b6f74f169e3e52554838d7` | | 2026.10.3 | Exact |
 | `rla` | EricZimmerman/RECmd | `8d1955910964209500b6f74f169e3e52554838d7` | 2026-10-29 | 2026.10.1 | Exact |
 | `registry-plugins` | EricZimmerman/RegistryPlugins | `bf564d6c4fcabf67b5ce4428ddf5e4a769b1e9ba` | 2026-10-29 | RegistryPluginBase 2026.10.7 | Exact (all 69 ported) |
 | `guidmapping-ez` | EricZimmerman/GuidMapping | `e2c93615a491ca43197b36960a436b559062cb52` | | 2026.10.2 | Exact |
-| `registry-ez` | EricZimmerman/Registry | not recorded (NuGet package 2026.10.1) | | 2026.10.1 | Package version only |
-| `evtxecmd`, `evtx-ez` | EricZimmerman/evtx | `fbf2f66736669689bfb95f735f7eca86d29d9800` | 2026-10-25 | | Estimate |
+| `registry-ez` | EricZimmerman/Registry | `de0bdbbea699637fe0e7b519c9f7fc07aafb173a` (tag 2026.10.1, the NuGet package's) | 2026-10-22 | 2026.10.1 | From the tag |
+| `evtxecmd`, `evtx-ez` | EricZimmerman/evtx | `fbf2f66736669689bfb95f735f7eca86d29d9800` for the code; `maps/` from `68c4d55` | 2026-10-25; maps 2026-11-04 | | Estimate |
 | `mftecmd` | EricZimmerman/MFTECmd | `b1f668d870153f9a4c4073845265c0e6071ed09f` | 2026-10-25 | 2026.10.6 | Estimate |
 | `ntfs-ez` | EricZimmerman/MFT | `3eecafae50ac8935b239cf3ded690b11af5020f4` | 2026-10-24 | | Estimate |
 
 Exact: the commit that was cloned for the port. Estimate: the commit wasn't written down when the port was made, so
 this is upstream's latest commit before the port's first commit (2026-11-02); check it before relying on it.
+
+## Updates
+
+- 2026-11-08: every repository above checked against its latest commit. Only data and non-code changes since the ports'
+  commits: evtx added the Network Diagnostics Framework maps (events 1000 and 2000), now in `maps/`, checked with the
+  original on two logs that have those events; Registry's commit after its 2026.10.1 tag changes a copyright line (that tag
+  makes a damaged base block time stamp the FILETIME epoch instead of failing, which the port never failed on: it doesn't
+  read that time stamp); OleCf and ExtensionBlocks only changed tests and CLAUDE.md.

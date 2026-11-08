@@ -351,6 +351,6 @@ mod tests {
         let (set, report) = MapSet::load_dir(dir).unwrap();
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         assert!(report.warnings.is_empty(), "{:?}", report.warnings);
-        assert_eq!(set.len(), 472);
+        assert_eq!(set.len(), 474);
     }
 }
