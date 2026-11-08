@@ -323,12 +323,15 @@ impl Database {
             return Err(format!("Page {number} is linked twice"));
         }
         let page = self.page(number)?;
-        let count = usize::from(u16_at(page, 34).ok_or("A page header is too short")?);
+        // itagState: the low 12 bits are the number of tags; newer ESE versions keep the number of reserved tags at the start of the
+        // array (the first being the page's external header) in bits 12 to 14. Older pages leave those bits 0 and have 1 reserved tag
+        let state = u16_at(page, 34).ok_or("A page header is too short")?;
+        let (count, reserved) = (usize::from(state & 0x0fff), usize::from((state >> 12) & 0x7).max(1));
         let flags = u32_at(page, 36).ok_or("A page header is too short")?;
         if count * 4 > self.page_size.saturating_sub(self.header_size) {
             return Err(format!("Page {number} says it has {count} tags"));
         }
-        for i in 1..count {
+        for i in reserved..count {
             let (value, tag_flags) = self.tag(page, i)?;
             if tag_flags & TAG_DELETED != 0 {
                 continue;
@@ -424,5 +427,40 @@ mod tests {
         assert!(row(&[1, 2]).value(&column(1, 2, 4)).is_err());
         let truncated = [2u8, 0x7f, 200, 0];
         assert!(row(&truncated).value(&column(1, 2, 4)).is_err());
+    }
+
+    /// The rows of a leaf page whose header has `item_state`, its tags 1 to 4 each a record of one byte (its tag number)
+    fn leaf_rows(item_state: u16) -> Vec<u8> {
+        let page_size = 4096;
+        let mut data = vec![0u8; page_size * 2];
+        let page = &mut data[page_size..];
+        page[34..36].copy_from_slice(&item_state.to_le_bytes());
+        page[36..40].copy_from_slice(&PAGE_LEAF.to_le_bytes());
+        for i in 1..5u16 {
+            // each value: a key of 0 bytes, then the record
+            let offset = 3 * i;
+            page[40 + usize::from(offset)..][..3].copy_from_slice(&[0, 0, i as u8]);
+            let at = page_size - 4 * (usize::from(i) + 1);
+            page[at..at + 2].copy_from_slice(&3u16.to_le_bytes());
+            page[at + 2..at + 4].copy_from_slice(&offset.to_le_bytes());
+        }
+        let masks = Masks { value: 0x1fff, extended: 0x4000 };
+        let db = Database { data, page_size, header_size: 40, masks, large: false, format_version: 0x620, format_revision: 0x12c, state: 3, tables: Vec::new() };
+        let mut rows = Vec::new();
+        db.walk(0, &mut |r| {
+            rows.push(r.data[0]);
+            Ok(())
+        })
+        .unwrap();
+        rows
+    }
+
+    #[test]
+    fn reserved_tags_in_the_page_header() {
+        // before: the number of tags only, and one reserved tag
+        assert_eq!(leaf_rows(5), [1, 2, 3, 4]);
+        // Windows 11 25H2's SRUDB.dat: the number of reserved tags in bits 12 to 14 of the same field
+        assert_eq!(leaf_rows(0x1005), [1, 2, 3, 4]);
+        assert_eq!(leaf_rows(0x2005), [2, 3, 4]);
     }
 }

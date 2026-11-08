@@ -16,7 +16,7 @@ Each tool is a library (which never prints or exits, so other programs can use i
 | [LECmd](https://github.com/EricZimmerman/LECmd) → `lecmd` | Done (`docs/plans/lecmd.md`) |
 | [JLECmd](https://github.com/EricZimmerman/JLECmd) → `jlecmd` | Done (`docs/plans/jlecmd.md`) |
 | [RBCmd](https://github.com/EricZimmerman/RBCmd) → `rbcmd` | Done (`docs/plans/rbcmd.md`) |
-| [SrumECmd](https://github.com/EricZimmerman/Srum) → `srumecmd` | Done as far as can be checked without Windows (`docs/plans/srumecmd.md`) |
+| [SrumECmd](https://github.com/EricZimmerman/Srum) → `srumecmd` | Done, identical to the original run on Windows (`docs/plans/srumecmd.md`) |
 
 The upstream commits each port was built from are in `docs/upstream.md`.
 
@@ -282,5 +282,5 @@ srumecmd -f /cases/host1/SRUDB.dat -r /cases/host1/SOFTWARE --csv /tmp/out
 srumecmd -d /cases/host1 --csv /tmp/out
 ```
 
-Transaction logs aren't replayed: a database that wasn't shut down cleanly is read as it is, with a warning. As the original can't run on Linux, it hasn't been compared
-as a whole with this port: `docs/plans/srumecmd.md` says what was checked instead.
+Transaction logs aren't replayed: a database that wasn't shut down cleanly is read as it is, with a warning. The original only runs on Windows; it was compared there with
+this port, with identical CSVs (`docs/plans/srumecmd.md`).
