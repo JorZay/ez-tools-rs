@@ -1,0 +1,13 @@
+[package]
+name = "sumecmd"
+description = "Reads User Access Logging (SUM) databases to CSV, with SumECmd's output"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+clap = { version = "4.6.7", features = ["derive", "wrap_help"] }
+ez-common = { version = "0.1.0", path = "../ez-common" }
+sum-ez = { version = "0.1.0", path = "../sum-ez" }

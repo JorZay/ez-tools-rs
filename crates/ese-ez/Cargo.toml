@@ -1,6 +1,6 @@
 [package]
 name = "ese-ez"
-description = "Reads the tables of ESE (Extensible Storage Engine) databases without Windows' esent.dll"
+description = "Reads the tables of ESE (Extensible Storage Engine) databases, with long and compressed values, without Windows' esent.dll"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

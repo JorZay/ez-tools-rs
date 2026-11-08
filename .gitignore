@@ -1,2 +1,4 @@
 /target
 *.swp
+/tools/gen-sumecmd-dbs/bin
+/tools/gen-sumecmd-dbs/obj

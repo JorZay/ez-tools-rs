@@ -19,6 +19,7 @@ Each tool is a library (which never prints or exits, so other programs can use i
 | [SrumECmd](https://github.com/EricZimmerman/Srum) → `srumecmd` | Done, identical to the original run on Windows (`docs/plans/srumecmd.md`) |
 | [RecentFileCacheParser](https://github.com/EricZimmerman/RecentFileCacheParser) → `recentfilecacheparser` | Done (`docs/plans/recentfilecacheparser.md`) |
 | [WxTCmd](https://github.com/EricZimmerman/WxTCmd) → `wxtcmd` | Done, identical to the original on Linux and Windows (`docs/plans/wxtcmd.md`) |
+| [SumECmd](https://github.com/EricZimmerman/Sum) → `sumecmd` | Done, identical to the original run on Windows but for rows only in transaction logs (`docs/plans/sumecmd.md`) |
 
 The upstream commits each port was built from are in `docs/upstream.md`. How the ports compare with the originals running on Windows is in `docs/windows-checks.md`.
 
@@ -311,3 +312,18 @@ wxtcmd -f /cases/host1/C/Users/jane/AppData/Local/ConnectedDevicesPlatform/L.jan
 ```
 
 `tools/parity-wxtcmd.sh` compares with the original, `tools/gen-wxtcmd-dbs.py` makes the edge case databases; `docs/plans/wxtcmd.md` lists the quirks kept.
+
+## sumecmd
+
+A port of SumECmd: Windows Server's User Access Logging databases (`C:\Windows\System32\LogFiles\Sum`: `SystemIdentity.mdb`, `Current.mdb` and the yearly
+`{GUID}.mdb`) to CSV, with the server's identity and roles, and the clients, users, addresses, daily access counts, DNS names and virtual machines. Like
+`srumecmd`, it reads the databases itself with `ese-ez` (now with long values, compression and multi-valued columns), in place and without writing.
+
+```
+cargo build --release -p sumecmd
+sumecmd -d /cases/host1/Windows/System32/LogFiles/Sum --csv /tmp/out
+```
+
+The original replays the `Svc*.log` transaction logs into copies of the databases and repairs a copy that is still dirty with `esentutl /p`; this port reads
+the files as they are and warns about a dirty one. Rows that are only in the logs are missing here; everything else was identical to the original run on
+Windows, on a real Server 2022 extraction, three public samples and 21 folders built with `esent.dll` (`docs/plans/sumecmd.md`).

@@ -1,0 +1,12 @@
+[package]
+name = "sum-ez"
+description = "Reads User Access Logging (SUM) databases, as Eric Zimmerman's SumData does"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ese-ez = { version = "0.1.0", path = "../ese-ez" }
+ez-common = { version = "0.1.0", path = "../ez-common" }

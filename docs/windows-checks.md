@@ -31,6 +31,8 @@ The other comparisons run the originals' Linux builds. On 2026-11-08 every port 
 | SQLECmd | `-d` on the VM, CSV and JSON | Identical but for the known order of Favicons rows with equal keys (`docs/plans/sqlecmd.md`) |
 | SrumECmd | `-f`, `-r`, `-d`, `--dt` (`docs/plans/srumecmd.md`, `docs/cli-options.md`) | Identical |
 | RecentFileCacheParser | Generated and damaged files, upstream's samples: CSV, JSON, `--pretty`, options (`docs/plans/recentfilecacheparser.md`) | Identical (576 runs) |
+| WxTCmd | The VM's own `ActivitiesCache.db`, upstream's samples, 8 databases of the extractions, generated and damaged ones; 29 `--dt` values and every option (`docs/plans/wxtcmd.md`) | Identical |
+| SumECmd (2026-11-09) | A real Server 2022 extraction, 3 public samples, 21 folders built with `esent.dll`; every option (`docs/plans/sumecmd.md`) | Identical but for rows only in transaction logs, which this port doesn't replay |
 
 MFTECmd wasn't run: the NTFS metadata files can't be copied from a running Windows as files.
 

@@ -21,7 +21,10 @@ NetworkBytes when they have rows.
 `ese-ez` reads the header, the catalog (`MSysObjects`, page 4), each table's B-tree in key order, and fixed, variable and tagged columns. It is read-only and takes the
 file as it is. Every offset is checked, so damage is an error and not a panic. Deleted records are skipped, as ESE does.
 
-Left out on purpose, because no database here has them, so code for them couldn't be tested. Each gives a row error naming the column, and the rest is read:
+Since SumECmd's port (`docs/plans/sumecmd.md`), `ese-ez` also reads long values, compressed values and multi-valued columns with `Row::read`, checked against
+`esent.dll` on databases built for it. `srum-ez` still uses `Row::value`, as before: SRUM databases have none of them (the list below), and SrumECmd's CSVs were
+unchanged by the new code. Left out on purpose then, because no database here has them, so code for them couldn't be tested. Each gives a row error naming
+the column, and the rest is read:
 
 - **Long values** (separate trees for values too large for a page).
 - **Compressed values** (7-bit and Xpress).
@@ -33,7 +36,7 @@ rows, none of the three occurs and no table has a long value tree.
 Pages written by newer ESE versions (seen on Windows 11 25H2, format `0x620,300,620`) keep the number of reserved tags in bits 12 to 14 of the page header's tag
 count (`itagState` in Microsoft's ESE source, `cpage.hxx`); the reader masks the count and starts after those tags. Older pages leave the bits 0 and have one.
 
-Also not done: page checksums aren't verified, and pages of 16 KB and more are handled by what's known of the format but have no sample; all databases here have 4 KB pages.
+Also not done: page checksums aren't verified. Pages of 16 KB and more had no sample here, and were read wrong (a tagged value's header byte was missed); SumECmd's port fixed that: databases of 8, 16 and 32 KB pages built with `esent.dll` now give the same rows. All SRUM databases here have 4 KB pages.
 
 ## Checks
 
