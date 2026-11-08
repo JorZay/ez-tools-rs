@@ -12,8 +12,8 @@ Status: core done (2026-11-02): `registry-ez` and `recmd`. All 69 plugins done (
 - Parity (`tools/parity-recmd.sh`): 83 runs on the 28 Registry.Test hives and the DFIR Artifact Museum's dirty SYSTEM
   (with its logs) identical to RECmd 2026.10.3, output files and console: batch files (DFIRBatch, and every key of
   every hive, ~2 million rows), searches, key dumps, `--details` (14 million lines for SOFTWARE). 2.7x faster.
-- Differences: culture-dependent text is en-US as .NET writes it on Linux (`7/3/2014 6:05:37 PM +00:00`, with a
-  narrow no-break space; N and P with 3 decimals), where the original follows the machine's language. BinaryConvert `Sid` gives the SID (as RECmd on Windows does, not the
+- Differences: culture-dependent text is en-US as .NET writes it on Windows (`7/3/2014 6:05:37 PM +00:00`, with a
+  plain space; N and P with 2 decimals), where the original follows the machine's language. BinaryConvert `Sid` gives the SID (as RECmd on Windows does, not the
   Linux build's "only available on Windows" note); `--vss` is ignored; .NET stack traces after errors are not
   printed; YAML syntax error messages are the Rust parser's.
 - `-d` finds hives as the original's Windows build (changed 2026-11-05, on the same rule as rla): any name holding USRCLASS, NTUSER,

@@ -11,6 +11,7 @@
 # Masked: InternalId in the JSON, a new GUID for each shell item in each run. The XHTML folder's name: on Linux the original makes
 # folders of the path's separators, this port underscores as on Windows.
 set -uo pipefail
+. "$(dirname "$0")/platform.sh"
 
 dll=$1
 work=${2:-$(mktemp -d)}
@@ -62,7 +63,7 @@ while IFS= read -r line; do
         diff <(cut -f1 "$work/$n-ref.names") <(cut -f1 "$work/$n-ours.names") | head -20
     else
         while IFS=$'\t' read -r name f o; do
-            if cmp -s <(mask "$work/$n-ref/$f") <(mask "$work/$n-ours/$o"); then
+            if cmp -s <(mask "$work/$n-ref/$f" | platform) <(mask "$work/$n-ours/$o" | platform); then
                 same=$((same + 1))
             else
                 diff=$((diff + 1))

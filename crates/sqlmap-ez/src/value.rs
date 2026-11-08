@@ -403,8 +403,8 @@ impl Value {
         match self {
             Value::Null => String::new(),
             Value::Blob(_) => "System.Byte[]".to_string(),
-            // .NET's en-US pattern, with the narrow space ICU has before AM and PM
-            Value::Date(t) => t.format("M/d/yyyy h:mm:ss\u{202f}tt"),
+            // .NET's en-US pattern, with the plain space Windows has before AM and PM
+            Value::Date(t) => t.format("M/d/yyyy h:mm:ss tt"),
             other => other.number_text(),
         }
     }

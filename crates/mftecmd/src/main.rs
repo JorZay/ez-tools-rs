@@ -1205,7 +1205,7 @@ fn process_j(r: &mut Run, file: &Path) -> bool {
                 .number("OffsetToData", e.offset_to_data)
                 .string("SourceFile", Some(&source));
             out.push_str(&j.finish());
-            out.push('\n');
+            out.push_str(ez_common::dotnet::NEW_LINE);
         }
         if let Err(err) = open_out(&p, false).and_then(|mut w| w.write_all(out.as_bytes()).and_then(|_| w.flush())) {
             r.log.error(&format!("\nError exporting to JSON. Error: {err}"));

@@ -1060,7 +1060,7 @@ impl Run {
         if given(&json).is_some() {
             for row in rows {
                 text.push_str(&row.json_line());
-                text.push('\n');
+                text.push_str(ez_common::dotnet::NEW_LINE);
             }
         } else {
             if !exists {
@@ -1122,9 +1122,10 @@ fn slack_text(slack: &[u8]) -> String {
     if slack.is_empty() { String::new() } else { format!("(Slack: {})", ez_common::net::hex(slack)) }
 }
 
-/// StripInvalidCharsFromFileName(name, "_") on Linux ('/' and NUL), then without NULs at the ends and '%'
+/// StripInvalidCharsFromFileName(name, "_") as on Windows, where Path.GetInvalidFileNameChars is `"<>|:*?\/`, NUL and the
+/// other control characters (on Linux only '/' and NUL), then without '%'
 fn file_name_safe(name: &str) -> String {
-    name.replace(['/', '\0'], "_").trim_matches('\0').replace('%', "")
+    name.chars().map(|c| if c < ' ' || "\"<>|:*?\\/".contains(c) { '_' } else { c }).filter(|&c| c != '%').collect()
 }
 
 /// The batch CSV or JSON file
@@ -1161,7 +1162,7 @@ fn write_batch(args: &Args, bn: &str, rows: &[Row], run_time: Timestamp, log: &m
     } else {
         for r in rows {
             text.push_str(&r.json());
-            text.push('\n');
+            text.push_str(ez_common::dotnet::NEW_LINE);
         }
     }
     let mut f = std::io::BufWriter::new(std::fs::File::create(&out).map_err(|e| e.to_string())?);

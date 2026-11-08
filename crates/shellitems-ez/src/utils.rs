@@ -209,7 +209,7 @@ pub fn split_nul_no_empty(text: &str) -> Vec<&str> {
 /// The format of times in the text of blocks and items: en-US's patterns with milliseconds and the offset, as DateTimeFormat
 /// left unset gives there (LECmd doesn't set it)
 pub fn time_text(t: Timestamp) -> String {
-    t.format("M/d/yyyy h:mm:ss.fff\u{202f}tt  K")
+    t.format("M/d/yyyy h:mm:ss.fff tt  K")
 }
 
 /// Utils.FromFileTime: the minimum for what isn't a valid FILETIME. Times are UTC here: the original keeps the local offset for

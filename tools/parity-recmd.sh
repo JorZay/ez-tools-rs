@@ -11,6 +11,7 @@
 # finds, not what its Linux one does. The original runs with LANG=en_US.UTF-8 (the
 # culture this port writes dates and numbers in). Give the original a Plugins folder created in NTFS order (docs/plans/recmd.md): it runs plugins in folder order. Build the release binary first (cargo build --release).
 set -uo pipefail
+. "$(dirname "$0")/platform.sh"
 
 dll=$1
 work=${2:-$(mktemp -d)}
@@ -61,7 +62,7 @@ while IFS= read -r line; do
         if [ -z "$o" ]; then
             diff=$((diff + 1))
             echo "MISSING from this port for $line: $name"
-        elif cmp -s <(masked "$work/$n-ref/$f" "$work/$n-ref") <(masked "$work/$n-ours/$o" "$work/$n-ours"); then
+        elif cmp -s <(masked "$work/$n-ref/$f" "$work/$n-ref" | platform) <(masked "$work/$n-ours/$o" "$work/$n-ours" | platform); then
             same=$((same + 1))
         else
             diff=$((diff + 1))

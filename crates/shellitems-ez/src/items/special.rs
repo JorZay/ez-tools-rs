@@ -14,7 +14,7 @@ fn twice(size: i32) -> i64 {
 
 /// DateTimeOffset.ToString() in en-US
 fn default_time(t: Timestamp) -> String {
-    t.format("M/d/yyyy h:mm:ss\u{202f}tt K")
+    t.format("M/d/yyyy h:mm:ss tt K")
 }
 
 fn user_profile(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
@@ -25,7 +25,7 @@ fn user_profile(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
     let text = crate::utils::unicode(skip(raw, 10));
     let first = text.split('\0').next().unwrap_or_default();
     item.value = if first.is_empty() { "(None)".to_string() } else { first.to_string() };
-    item.set_before_line(Some(format!("{}\n", time_line("Accessed On", last_access))).filter(|_| last_access.is_some()));
+    item.set_before_line(Some(format!("{}\r\n", time_line("Accessed On", last_access))).filter(|_| last_access.is_some()));
     Ok(())
 }
 
@@ -111,7 +111,7 @@ fn view_0x2e(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
     }
     if let Some(store) = &item.property_store {
         if !store.sheets.is_empty() {
-            item.parts.push(Part::Store("Property Sheets\n".to_string(), store.clone()));
+            item.parts.push(Part::Store("Property Sheets\r\n".to_string(), store.clone()));
         }
     }
     Ok(())
@@ -137,7 +137,7 @@ pub fn new_0x2e(raw: &[u8]) -> NetResult<ShellItem> {
         let category = guid_name(&guid_text(copy(raw, end + 16, 16)?)?);
         item.set("Category", Value::text(category.as_str()));
         item.set("DevicePath", Value::text(device_path.as_str()));
-        item.set_before_line(Some(format!("Category: {category}\n\nDevice Path: {device_path}\n\n")));
+        item.set_before_line(Some(format!("Category: {category}\r\n\r\nDevice Path: {device_path}\r\n\r\n")));
         return Ok(item);
     }
     view_0x2e(&mut item, raw)?;
@@ -173,7 +173,7 @@ pub fn new_0x50(raw: &[u8]) -> NetResult<ShellItem> {
     item.value = text.split('\0').next().unwrap_or_default().to_string();
     let time = from_file_time(i64_at(raw, index + i64::from(size))?);
     item.set("FileTime1", Value::time(time));
-    item.set_before_line(Some(format!("Timestamp: {}\n\n", default_time(time))));
+    item.set_before_line(Some(format!("Timestamp: {}\r\n\r\n", default_time(time))));
     Ok(item)
 }
 
@@ -193,7 +193,7 @@ pub fn new_0x52(raw: &[u8]) -> NetResult<ShellItem> {
     let mut item = ShellItem::new("ShellBag0X52", "Acronis", raw);
     if byte_at(raw, 4)? == 0x10 {
         let modified = zip_name(&mut item, raw)?;
-        item.set_before_line(Some(format!("Modified On: {}\n\n", time_text(modified))));
+        item.set_before_line(Some(format!("Modified On: {}\r\n\r\n", time_text(modified))));
         return Ok(item);
     }
     let length = i32_at(raw, 46)?;
@@ -205,7 +205,7 @@ pub fn new_0x61(raw: &[u8]) -> NetResult<ShellItem> {
     let mut item = ShellItem::new("ShellBag0X61", "URI", raw);
     if byte_at(raw, 4)? == 0x10 {
         let modified = zip_name(&mut item, raw)?;
-        item.set_before_line(Some(format!("URI: \n\nModified On: {}\n\n", time_text(modified))));
+        item.set_before_line(Some(format!("URI: \r\n\r\nModified On: {}\r\n\r\n", time_text(modified))));
         return Ok(item);
     }
     let size = u16_at(raw, 4)?;
@@ -213,7 +213,7 @@ pub fn new_0x61(raw: &[u8]) -> NetResult<ShellItem> {
         let uri = unicode_string(raw, 8, raw.len() as i64 - 8)?.trim_matches('\0').to_string();
         item.value = uri.split('\0').next().unwrap_or_default().to_string();
         item.set("URI", Value::text(uri.as_str()));
-        item.set_before_line(Some(format!("URI: {uri}\n\n")));
+        item.set_before_line(Some(format!("URI: {uri}\r\n\r\n")));
         return Ok(item);
     }
     let mut index = 14i64;
@@ -244,9 +244,9 @@ pub fn new_0x61(raw: &[u8]) -> NetResult<ShellItem> {
     }
     let uri = ansi_at(raw, index, len)?;
     item.set("URI", Value::text(uri.as_str()));
-    let mut before = format!("URI: {uri}\n\nConnect time: {}\n\n", time_text(connect));
+    let mut before = format!("URI: {uri}\r\n\r\nConnect time: {}\r\n\r\n", time_text(connect));
     if !user.is_empty() {
-        before.push_str(&format!("Username: {user}\n\n"));
+        before.push_str(&format!("Username: {user}\r\n\r\n"));
     }
     item.set_before_line(Some(before));
     Ok(item)
@@ -263,7 +263,7 @@ pub fn new_0x69(raw: &[u8]) -> NetResult<ShellItem> {
     let name = unicode_string(raw, 4, raw.len() as i64 - 4)?.replace('\0', "");
     if byte_at(raw, 4)? == 0x10 {
         let modified = zip_name(&mut item, raw)?;
-        item.set_before_line(Some(format!("Modified On: {}\n\n", time_text(modified))));
+        item.set_before_line(Some(format!("Modified On: {}\r\n\r\n", time_text(modified))));
         return Ok(item);
     }
     item.value = name;
@@ -306,7 +306,7 @@ pub fn new_0x78(raw: &[u8]) -> NetResult<ShellItem> {
             }
         }
         if !store.sheets.is_empty() {
-            item.parts.push(Part::Store("Property Sheets\n".to_string(), store.clone()));
+            item.parts.push(Part::Store("Property Sheets\r\n".to_string(), store.clone()));
         }
         item.property_store = Some(store);
     }
@@ -381,16 +381,16 @@ pub fn new_archive_contents(raw: &[u8]) -> NetResult<ShellItem> {
         item.set("ModifiedOn", Value::time(from_file_time(modified)));
     }
     item.set("ArchivePath", Value::text(path.as_str()));
-    let mut before = format!("Archive path: {path}\nFile attributes: 0x{attributes:X}\n");
+    let mut before = format!("Archive path: {path}\r\nFile attributes: 0x{attributes:X}\r\n");
     if size > 0 {
-        before.push_str(&format!("File size: {}\n", ez_common::dotnet::n0(size)));
+        before.push_str(&format!("File size: {}\r\n", ez_common::dotnet::n0(size)));
     }
     if modified > 0 {
-        before.push_str(&format!("Modified On: {}\n", time_text(from_file_time(modified))));
+        before.push_str(&format!("Modified On: {}\r\n", time_text(from_file_time(modified))));
     }
-    before.push('\n');
+    before.push_str("\r\n");
     item.set_before_line(Some(before));
-    item.after = "\n".to_string();
+    item.after = "\r\n".to_string();
     Ok(item)
 }
 
@@ -455,15 +455,15 @@ pub fn new_cd_burn(raw: &[u8]) -> NetResult<ShellItem> {
     }
     let mut before = String::new();
     if !short.is_empty() {
-        before.push_str(&format!("Short name: {short}\n"));
+        before.push_str(&format!("Short name: {short}\r\n"));
     }
     if size > 0 {
-        before.push_str(&format!("File size: {}\n", n0(i64::from(size))));
+        before.push_str(&format!("File size: {}\r\n", n0(i64::from(size))));
     }
     if let Some(t) = modified {
-        before.push_str(&format!("Modified On: {}\n", default_time(t)));
+        before.push_str(&format!("Modified On: {}\r\n", default_time(t)));
     }
-    before.push('\n');
+    before.push_str("\r\n");
     item.set_before_line(Some(before));
     item.set("FileSize", Value::number(size));
     item.short_name = Some(short);
@@ -517,10 +517,10 @@ pub fn new_cfsf(raw: &[u8]) -> NetResult<ShellItem> {
     }
     let mut before = String::new();
     if size > 0 {
-        before.push_str(&format!("File size: {}\n", n0(i64::from(size))));
+        before.push_str(&format!("File size: {}\r\n", n0(i64::from(size))));
     }
     if let Some(t) = modified {
-        before.push_str(&format!("Modified On: {}\n\n", default_time(t)));
+        before.push_str(&format!("Modified On: {}\r\n\r\n", default_time(t)));
     }
     item.set_before_line(Some(before));
     Ok(item)
@@ -558,7 +558,7 @@ pub fn new_document_drive(raw: &[u8]) -> NetResult<ShellItem> {
     let mut before = String::new();
     let time_offset = if folder {
         let (id, parent) = (terminated_string(raw, 0x79)?, terminated_string(raw, 0xa5)?);
-        before.push_str(&format!("Item ID: {id}\nParent ID: {parent}\n\n"));
+        before.push_str(&format!("Item ID: {id}\r\nParent ID: {parent}\r\n\r\n"));
         item.set("ItemId", Value::text(id));
         item.set("ParentId", Value::text(parent));
         item.value = terminated_string(raw, 0xd2)?;
@@ -574,9 +574,9 @@ pub fn new_document_drive(raw: &[u8]) -> NetResult<ShellItem> {
     before.push_str(&time_line("Created On", created));
     before.push_str(&time_line("Modified On", modified));
     before.push_str(&time_line("Accessed On", accessed));
-    before.push('\n');
+    before.push_str("\r\n");
     item.set_before_line(Some(before));
-    item.after = "\n".to_string();
+    item.after = "\r\n".to_string();
     Ok(item)
 }
 
@@ -639,18 +639,18 @@ pub fn new_find_data(raw: &[u8]) -> NetResult<ShellItem> {
     item.set("SecondName", Value::text(second.as_str()));
     let mut before = String::new();
     if second != item.value {
-        before.push_str(&format!("Second name: {second}\n"));
+        before.push_str(&format!("Second name: {second}\r\n"));
     }
-    before.push_str(&format!("Item GUID: {FIND_DATA_GUID}\nFile attributes: 0x{attributes:X}\n"));
+    before.push_str(&format!("Item GUID: {FIND_DATA_GUID}\r\nFile attributes: 0x{attributes:X}\r\n"));
     if size > 0 {
-        before.push_str(&format!("File size: {}\n", ez_common::dotnet::n0(size)));
+        before.push_str(&format!("File size: {}\r\n", ez_common::dotnet::n0(size)));
     }
     before.push_str(&time_line("Created On", created));
     before.push_str(&time_line("Modified On", modified));
     before.push_str(&time_line("Accessed On", accessed));
-    before.push('\n');
+    before.push_str("\r\n");
     item.set_before_line(Some(before));
-    item.after = "\n".to_string();
+    item.after = "\r\n".to_string();
     Ok(item)
 }
 
@@ -694,7 +694,7 @@ pub fn new_mtp_device(raw: &[u8]) -> NetResult<ShellItem> {
     item.set("DelegateFolderGuid", Value::guid(&delegate_folder));
     item.set("PortableDeviceId", Value::text(portable.as_str()));
     item.set_before_line(Some(format!(
-        "Class Id: {class_id}\nDevice path: {path}\nDevice properties GUID: {props}\nFunctional object GUID: {functional_object}\nFunctional category GUID: {functional_category}\nDelegate folder GUID: {delegate_folder}\nPortable device Id: {portable}\n\n"
+        "Class Id: {class_id}\r\nDevice path: {path}\r\nDevice properties GUID: {props}\r\nFunctional object GUID: {functional_object}\r\nFunctional category GUID: {functional_category}\r\nDelegate folder GUID: {delegate_folder}\r\nPortable device Id: {portable}\r\n\r\n"
     )));
     Ok(item)
 }
@@ -776,7 +776,7 @@ fn property_line(guid: &str, id: i32, kind: i32, bytes: &[u8]) -> String {
         })
     };
     let text = value().unwrap_or_else(|e| format!("(could not be shown: {e})"));
-    format!("{description}: {text}\n")
+    format!("{description}: {text}\r\n")
 }
 
 /// PropertyArray's serialized properties
@@ -889,11 +889,11 @@ pub fn new_mtp_folder(raw: &[u8]) -> NetResult<ShellItem> {
         }
     }
     item.set("PropertyArrays", Value::List(arrays));
-    let mut before = format!("Folder name: {name}\n");
+    let mut before = format!("Folder name: {name}\r\n");
     if name2 != name {
-        before.push_str(&format!("Folder name 2: {name2}\n"));
+        before.push_str(&format!("Folder name 2: {name2}\r\n"));
     }
-    before.push_str(&format!("\nProperty arrays (Description: Value)\n{lines}\n"));
+    before.push_str(&format!("\r\nProperty arrays (Description: Value)\r\n{lines}\r\n"));
     item.set_before_line(Some(before));
     Ok(item)
 }
@@ -986,7 +986,7 @@ pub fn new_mtp_storage(raw: &[u8]) -> NetResult<ShellItem> {
     }
     item.set("PropertyArrays", Value::List(arrays));
     item.set_before_line(Some(format!(
-        "Storage name: {name}\nStorage serial number: {serial}\n\nFile system name: {file_system}\n\nPersistent Unique Id: {unique}\n\nWPD Event Handlers {handler_list}\n\nProperty arrays (Description: Value)\n{lines}\n"
+        "Storage name: {name}\r\nStorage serial number: {serial}\r\n\r\nFile system name: {file_system}\r\n\r\nPersistent Unique Id: {unique}\r\n\r\nWPD Event Handlers {handler_list}\r\n\r\nProperty arrays (Description: Value)\r\n{lines}\r\n"
     )));
     Ok(item)
 }
@@ -1073,10 +1073,10 @@ pub fn new_zip_contents(raw: &[u8]) -> NetResult<ShellItem> {
     let mut before = String::new();
     item.set("ParentFolder", Value::opt_text(parent.as_deref()));
     if let Some(p) = parent.filter(|p| !p.is_empty()) {
-        before.push_str(&format!("Folder in the zip file: {p}\n\n"));
+        before.push_str(&format!("Folder in the zip file: {p}\r\n\r\n"));
     }
     if date_text != "N/A" {
-        before.push_str(&format!("Last access internal value: {date_text}\n\n"));
+        before.push_str(&format!("Last access internal value: {date_text}\r\n\r\n"));
     }
     item.set_before_line(Some(before));
     Ok(item)

@@ -186,7 +186,7 @@ pub fn byte_at(raw: &[u8], index: i64) -> NetResult<u8> {
 pub fn offset_text(t: Timestamp) -> String {
     let p = t.parts();
     let hour = if p.hour % 12 == 0 { 12 } else { p.hour % 12 };
-    format!("{}/{}/{} {hour}:{:02}:{:02}\u{202f}{} +00:00", p.month, p.day, format_args!("{:04}", p.year), p.minute, p.second, if p.hour < 12 { "AM" } else { "PM" })
+    format!("{}/{}/{} {hour}:{:02}:{:02} {} +00:00", p.month, p.day, format_args!("{:04}", p.year), p.minute, p.second, if p.hour < 12 { "AM" } else { "PM" })
 }
 
 /// `Convert.ToByte(text, 16)` of two characters

@@ -139,7 +139,9 @@ def compare(run_name, tool, dll, label, ref_args, our_args, inputs, work, compar
             def clean(data, folder):
                 data = re.sub(rb'"?InternalId"?:\s*"?[0-9a-f-]+"?', b"", mask(data, folder))
                 # RECmd's batch CSV names its plugins' files
-                return re.sub(rb"(\{time\}_[A-Za-z0-9]+_)/", rb"\1_", re.sub(rb"\d{14}", b"{time}", data))
+                data = re.sub(rb"(\{time\}_[A-Za-z0-9]+_)/", rb"\1_", re.sub(rb"\d{14}", b"{time}", data))
+                # the Linux originals' .NET platform rules, which the ports don't follow (tools/platform.sh)
+                return data.replace("\u202f".encode(), b" ").replace(b"\r\n", b"\n")
             if clean(a.read(), ro) != clean(b.read(), oo):
                 results.append(f"content {name}")
     if compare_console and not results and console(rd, ro) != console(od, oo):

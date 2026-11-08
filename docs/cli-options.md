@@ -7,8 +7,8 @@ How `--dt` and the command line itself behave in all the ports, compared with th
 `Timestamp::format` in `ez-common` is .NET's `DateTimeOffset.ToString(format)` at offset 0 in en-US, as every original uses it:
 
 - A custom format. `%x` is `x` alone, whatever follows it, and `g` is `AD`.
-- A standard format of one letter, or an empty format: `G` is `1/2/2020 3:04:05 PM`, `D` is `Thursday, January 2, 2020`. ICU puts U+202F, not a space, before
-  AM and PM in these, and only in these.
+- A standard format of one letter, or an empty format: `G` is `1/2/2020 3:04:05 PM`, `D` is `Thursday, January 2, 2020`. The space before AM and PM is a plain
+  one, as .NET writes it on Windows (on Linux, ICU puts U+202F there, so the Linux originals differ from the ports in this).
 - `U` is an error, as for any `DateTimeOffset`, and so are other letters alone, more than seven `f` or `F`, an unmatched quote, and a `%` or `\` with
   nothing after it. `Timestamp::check_format` says so. The original fails while it writes, and what that leaves differs per tool:
 
@@ -49,9 +49,8 @@ The other 21 are known:
 - `evtxecmd` (18): the port's command line is its own by design. It takes several `-f` and `-d`, and has no `--met`, `--vss`, `--dedupe` or `--co`.
 
 SrumECmd's original only runs on Windows: its 64 cases (the same 37 `--dt` values and each option repeated, on the SRUM database of a
-Windows 11 25H2 machine) were compared with the original run there. 57 are identical. The other 7 are the standard formats with AM or PM
-(`G`, `g`, `f`, `F`, `t`, `T` and empty): .NET on Windows takes its culture data from Windows and writes a space before AM and PM, where ICU, and
-so the Linux originals and the ports, write U+202F.
+Windows 11 25H2 machine) were compared with the original run there. All are identical, now that the ports write a plain space before AM and PM
+as .NET does on Windows (`docs/windows-checks.md`).
 
 Not compared, for lack of a sample: `$I30` and `$SDS` with MFTECmd (`$SDS` has no dates; `$I30` follows the same code as `$J`). Not compared with a bad `--dt`:
 EvtxECmd's JSON, and files with rows that have no date before the first that has one (the ports keep such whole rows, by reading how `$LogFile` fails). The

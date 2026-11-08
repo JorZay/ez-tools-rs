@@ -1282,9 +1282,9 @@ fn lk_check(raw: &[u8]) -> NetResult<()> {
     Ok(())
 }
 
-/// The P format with the en-US culture (ICU): 3 decimals
+/// The P format with the en-US culture, as on Windows: 2 decimals (ICU, on Linux, has 3)
 fn percent(v: f64) -> String {
-    format!("{}%", ez_common::dotnet::number_n(v * 100.0, 3))
+    format!("{}%", ez_common::dotnet::number_n(v * 100.0, 2))
 }
 
 /// ValueData's switch on the type. Ok(None) for a type without a name (it becomes RegUnknown).

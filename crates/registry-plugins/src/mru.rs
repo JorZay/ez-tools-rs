@@ -225,7 +225,7 @@ pub fn ares(hive: &Hive, key: KeyId, out: &mut Output) -> NetResult<()> {
                 }
                 let units: Vec<u16> = sub_name.encode_utf16().collect();
                 if units.len() < 4 {
-                    return Err(format!("length ('{}') must be a non-negative value. (Parameter 'length')\nActual value was {}.", units.len() as i64 - 4, units.len() as i64 - 4));
+                    return Err(format!("length ('{}') must be a non-negative value. (Parameter 'length')\r\nActual value was {}.", units.len() as i64 - 4, units.len() as i64 - 4));
                 }
                 let mut search_type = String::from_utf16_lossy(&units[..units.len() - 4]);
                 if search_type == "gen" {

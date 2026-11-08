@@ -93,7 +93,7 @@ impl Timestamp {
     }
 
     /// DateTimeOffset.ToString(format) at offset 0 with the en-US culture, as the original tools' --dt: a custom format, one of
-    /// the standard ones or an empty one, as .NET has them on ICU (which puts U+202F before AM and PM). A format .NET
+    /// the standard ones or an empty one, as .NET has them on Windows (a plain space before AM and PM; ICU, on Linux, has U+202F). A format .NET
     /// rejects (see [`check_format`](Self::check_format)) comes out as it is: tools check it first.
     pub fn format(self, format: &str) -> String {
         let custom = standard_format(format).unwrap_or(format);
@@ -331,7 +331,7 @@ const MONTH_NAMES: [&str; 12] = [
 fn standard_format(format: &str) -> Option<&'static str> {
     let mut chars = format.chars();
     let Some(c) = chars.next() else {
-        return Some("M/d/yyyy h:mm:ss\u{202F}tt zzz");
+        return Some("M/d/yyyy h:mm:ss tt zzz");
     };
     if chars.next().is_some() {
         return None;
@@ -339,16 +339,16 @@ fn standard_format(format: &str) -> Option<&'static str> {
     Some(match c {
         'd' => "M/d/yyyy",
         'D' => "dddd, MMMM d, yyyy",
-        'f' => "dddd, MMMM d, yyyy h:mm\u{202F}tt",
-        'F' => "dddd, MMMM d, yyyy h:mm:ss\u{202F}tt",
-        'g' => "M/d/yyyy h:mm\u{202F}tt",
-        'G' => "M/d/yyyy h:mm:ss\u{202F}tt",
+        'f' => "dddd, MMMM d, yyyy h:mm tt",
+        'F' => "dddd, MMMM d, yyyy h:mm:ss tt",
+        'g' => "M/d/yyyy h:mm tt",
+        'G' => "M/d/yyyy h:mm:ss tt",
         'm' | 'M' => "MMMM d",
         'o' | 'O' => "yyyy-MM-ddTHH:mm:ss.fffffffK",
         'r' | 'R' => "ddd, dd MMM yyyy HH:mm:ss 'GMT'",
         's' => "yyyy-MM-ddTHH:mm:ss",
-        't' => "h:mm\u{202F}tt",
-        'T' => "h:mm:ss\u{202F}tt",
+        't' => "h:mm tt",
+        'T' => "h:mm:ss tt",
         'u' => "yyyy-MM-dd HH:mm:ssZ",
         'y' | 'Y' => "MMMM yyyy",
         _ => return None,
@@ -491,8 +491,8 @@ mod tests {
     fn en_us_formats() {
         let t = Timestamp::from_parts(2020, 1, 2, 15, 4, 5, 0).unwrap();
         let f = |format: &str| t.format_en_us(format);
-        assert_eq!(f("").unwrap(), "1/2/2020 3:04:05\u{202F}PM +00:00");
-        assert_eq!(f("G").unwrap(), "1/2/2020 3:04:05\u{202F}PM");
+        assert_eq!(f("").unwrap(), "1/2/2020 3:04:05 PM +00:00");
+        assert_eq!(f("G").unwrap(), "1/2/2020 3:04:05 PM");
         assert_eq!(f("D").unwrap(), "Thursday, January 2, 2020");
         assert_eq!(f("r").unwrap(), "Thu, 02 Jan 2020 15:04:05 GMT");
         assert_eq!(f("yyyy-MM-dd gg").unwrap(), "2020-01-02 AD");

@@ -458,7 +458,7 @@ impl PropertySheet {
             out.push_str("\r\n");
             for line in lines {
                 out.push_str(&line.line());
-                out.push('\n');
+                out.push_str("\r\n");
             }
         }
         out
@@ -492,7 +492,7 @@ impl PropertySheet {
         let mut s = pairs.join("; ");
         let extra = self.extra_data();
         if !extra.is_empty() {
-            s.push_str(&format!("\n\nExtra data: {extra}\n"));
+            s.push_str(&format!("\r\n\r\nExtra data: {extra}\r\n"));
         }
         s
     }
@@ -548,10 +548,10 @@ impl PropertyStore {
     pub fn to_text(&self) -> String {
         let mut s = String::new();
         for (i, sheet) in self.sheets.iter().enumerate() {
-            s.push_str(&format!("Sheet #{i} => {}\n", sheet.to_text()));
+            s.push_str(&format!("Sheet #{i} => {}\r\n", sheet.to_text()));
         }
         for e in &self.parse_errors {
-            s.push_str(&format!("Parse error: {e}\n"));
+            s.push_str(&format!("Parse error: {e}\r\n"));
         }
         s
     }

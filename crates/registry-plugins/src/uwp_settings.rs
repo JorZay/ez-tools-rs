@@ -181,7 +181,7 @@ fn read_value(hive: &Hive, key: KeyId, v: VkId, out: &mut Output) -> NetResult<(
         value,
         Some(type_name.to_string()),
         // DateTime.ToString() with the en-US culture
-        Some(stamp.format("M/d/yyyy h:mm:ss\u{202F}tt")),
+        Some(stamp.format("M/d/yyyy h:mm:ss tt")),
     ));
     Ok(())
 }

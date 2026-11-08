@@ -459,7 +459,7 @@ pub fn write_json(out: &mut String, r: &MftRow) {
         .string("ResidentDataASCII", r.resident_data_ascii.as_deref())
         .string("ParseErrors", r.parse_errors.as_deref());
     out.push_str(&j.finish());
-    out.push('\n');
+    out.push_str(ez_common::dotnet::NEW_LINE);
 }
 
 pub const FILE_LISTING_HEADER: &str = "FullPath,Extension,IsDirectory,FileSize,Created0x10,LastModified0x10\r\n";

@@ -384,13 +384,15 @@ fn xml_writer_text(value: &str) -> Result<String, String> {
             '&' => out.push_str("&amp;"),
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
+            // NewLineHandling.Replace: each line break is NewLineChars, which is Environment.NewLine
             '\r' => {
-                out.push('\n');
+                out.push_str(ez_common::dotnet::NEW_LINE);
                 if chars.peek() == Some(&'\n') {
                     chars.next();
                 }
             }
-            '\t' | '\n' => out.push(c),
+            '\n' => out.push_str(ez_common::dotnet::NEW_LINE),
+            '\t' => out.push(c),
             c if (c as u32) < 0x20 || c == '\u{fffe}' || c == '\u{ffff}' => {
                 return Err(format!("'{}', hexadecimal value 0x{:02X}, is an invalid character.", c, c as u32));
             }
@@ -909,13 +911,13 @@ struct Export {
 
 fn xhtml_element(out: &mut String, name: &str, value: Option<&str>) {
     match value.filter(|v| !v.is_empty()) {
-        Some(v) => out.push_str(&format!("\n        <{name}>{}</{name}>", xml_text_writer_text(v))),
-        None => out.push_str(&format!("\n        <{name} />")),
+        Some(v) => out.push_str(&format!("\r\n        <{name}>{}</{name}>", xml_text_writer_text(v))),
+        None => out.push_str(&format!("\r\n        <{name} />")),
     }
 }
 
 fn xhtml_container(o: &CsvOut) -> String {
-    let mut s = String::from("\n    <Container>");
+    let mut s = String::from("\r\n    <Container>");
     for name in [
         "SourceFile", "SourceCreated", "SourceModified", "SourceAccessed", "TargetCreated", "TargetModified", "TargetAccessed", "FileSize", "RelativePath", "WorkingDirectory", "FileAttributes", "HeaderFlags", "DriveType",
         "VolumeSerialNumber", "VolumeLabel", "LocalPath", "NetworkPath", "CommonPath", "Arguments", "TargetIDAbsolutePath", "TargetMFTEntryNumber", "TargetMFTSequenceNumber", "MachineID", "MachineMACAddress", "MACVendor",
@@ -923,7 +925,7 @@ fn xhtml_container(o: &CsvOut) -> String {
     ] {
         xhtml_element(&mut s, name, o.get(name).as_deref());
     }
-    s.push_str("\n    </Container>");
+    s.push_str("\r\n    </Container>");
     s
 }
 
@@ -1005,13 +1007,13 @@ fn export(files: &[LnkFile], args: &Args, stamp: &str, macs: &HashMap<String, St
         let folder = combine(html, &format!("{stamp}_LECmd_Output_for_{}", html.replace(":\\", "_").replace(['\\', '/'], "_")));
         std::fs::create_dir_all(&folder).map_err(|e| fail(e, &folder))?;
         let normalize = combine(&folder, "normalize.css");
-        std::fs::write(&normalize, include_str!("../data/normalize.css").trim_start_matches('\u{feff}')).map_err(|e| fail(e, &normalize))?;
+        std::fs::write(&normalize, ez_common::dotnet::crlf_lines(include_str!("../data/normalize.css").trim_start_matches('\u{feff}'))).map_err(|e| fail(e, &normalize))?;
         let style = combine(&folder, "style.css");
-        std::fs::write(&style, include_str!("../data/style.css").trim_start_matches('\u{feff}')).map_err(|e| fail(e, &style))?;
+        std::fs::write(&style, ez_common::dotnet::crlf_lines(include_str!("../data/style.css").trim_start_matches('\u{feff}'))).map_err(|e| fail(e, &style))?;
         let path = combine(&folder, "index.xhtml");
         log.info(&format!("Saving HTML output to {path}"));
         let mut w = BufWriter::new(File::create(&path).map_err(|e| fail(e, &path))?);
-        w.write_all("\u{feff}<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<?xml-stylesheet href=\"normalize.css\"?>\n<?xml-stylesheet href=\"style.css\"?>\n".as_bytes()).map_err(|e| fail(e, &path))?;
+        w.write_all("\u{feff}<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<?xml-stylesheet href=\"normalize.css\"?>\r\n<?xml-stylesheet href=\"style.css\"?>\r\n".as_bytes()).map_err(|e| fail(e, &path))?;
         out.xhtml = Some(w);
     }
     let mut in_document = false;
@@ -1035,7 +1037,7 @@ fn export(files: &[LnkFile], args: &Args, stamp: &str, macs: &HashMap<String, St
             let cs = csv_format(file, JSON_DATE_FORMAT, macs, log);
             let line = if args.pretty { cs.dump() } else { cs.to_json() };
             if let Some(w) = &mut out.json {
-                if let Err(e) = writeln!(w, "{line}") {
+                if let Err(e) = write!(w, "{line}{}", ez_common::dotnet::NEW_LINE) {
                     *export_errors += 1;
                     let (message, exception) = (e.to_string(), io_exception(&e).to_string());
                     log.block(Level::Error, &format!("Error writing JSON for {}. Error: {message}\n{exception}: {message}", o.source_file));
@@ -1062,7 +1064,7 @@ fn export(files: &[LnkFile], args: &Args, stamp: &str, macs: &HashMap<String, St
         w.flush().map_err(|e| (e.to_string(), io_exception(&e).to_string()))?;
     }
     if let Some(mut w) = out.xhtml {
-        let end: &[u8] = if in_document { b"\n</document>" } else { b"<document />" };
+        let end: &[u8] = if in_document { b"\r\n</document>" } else { b"<document />" };
         w.write_all(end).and_then(|()| w.flush()).map_err(|e| (e.to_string(), io_exception(&e).to_string()))?;
     }
     Ok(())

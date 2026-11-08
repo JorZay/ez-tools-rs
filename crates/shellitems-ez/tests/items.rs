@@ -56,8 +56,8 @@ fn files_and_folders() {
     assert_eq!(item.value, "long file.txt");
     assert_eq!(item.short_name.as_deref(), Some("LONGFI~1.TXT"));
     let text = item.to_text();
-    assert!(text.starts_with("Short name: LONGFI~1.TXT\n\nFile size: 1,234\nModified On: 1/1/2016 12:00:00.000\u{202f}PM  +00:00\n\nValue: long file.txt\nShell Type: File\n\n"), "{text}");
-    assert!(text.contains("Extension blocks found: 1\n---------------------- Block 0 ----------------------\nSignature: 0xbeef0004\n"), "{text}");
+    assert!(text.starts_with("Short name: LONGFI~1.TXT\r\n\r\nFile size: 1,234\r\nModified On: 1/1/2016 12:00:00.000 PM  +00:00\r\n\r\nValue: long file.txt\r\nShell Type: File\r\n\r\n"), "{text}");
+    assert!(text.contains("Extension blocks found: 1\r\n---------------------- Block 0 ----------------------\r\nSignature: 0xbeef0004\r\n"), "{text}");
     let BlockKind::Beef0004 { mft, long_name, .. } = &item.extension_blocks[0].kind else { panic!("not a Beef0004") };
     assert_eq!(long_name, "long file.txt");
     assert_eq!(mft.entry_number, Some(5));

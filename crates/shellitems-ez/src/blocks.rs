@@ -272,10 +272,10 @@ fn beef0017(raw: &[u8]) -> NetResult<Block> {
         match made {
             Ok(item) => {
                 details.push_str(&item.to_text());
-                details.push('\n');
+                details.push_str("\r\n");
             }
             Err(e) => {
-                details.push_str(&format!("Shell item 0x{id:02X} could not be parsed: {e}\n"));
+                details.push_str(&format!("Shell item 0x{id:02X} could not be parsed: {e}\r\n"));
             }
         }
         size = if index + 2 <= raw.len() as i64 { i16_at(raw, index)? } else { 0 };
@@ -457,9 +457,9 @@ pub fn from_bytes_or_error(raw: &[u8]) -> Block {
 
 impl Block {
     fn base_text(&self) -> String {
-        let mut s = format!("Signature: 0x{:08x}\nSize: {}\nVersion: {}\nVersion Offset: 0x{:02X}\n", self.signature, n0(i64::from(self.size)), n0(i64::from(self.version)), self.version_offset);
+        let mut s = format!("Signature: 0x{:08x}\r\nSize: {}\r\nVersion: {}\r\nVersion Offset: 0x{:02X}\r\n", self.signature, n0(i64::from(self.size)), n0(i64::from(self.version)), self.version_offset);
         if !self.message.is_empty() {
-            s.push_str(&format!("\nMessage: {}\n", self.message));
+            s.push_str(&format!("\r\nMessage: {}\r\n", self.message));
         }
         s
     }
@@ -467,19 +467,19 @@ impl Block {
     /// ToString()
     pub fn to_text(&self) -> String {
         if matches!(self.kind, BlockKind::PlaceHolder) {
-            return "This is a placeholder bag to account for additional extension blocks inside internal ShellBags\n".to_string();
+            return "This is a placeholder bag to account for additional extension blocks inside internal ShellBags\r\n".to_string();
         }
         let mut s = self.base_text();
-        s.push('\n');
+        s.push_str("\r\n");
         let opt = |o: &Option<String>| o.clone().unwrap_or_default();
         match &self.kind {
             BlockKind::Plain | BlockKind::PlaceHolder => {}
-            BlockKind::PlainExtraLine => s.push('\n'),
+            BlockKind::PlainExtraLine => s.push_str("\r\n"),
             BlockKind::Guid1 { guid, folder } => {
-                s.push_str(&format!("\nGUID 1: {}\nGUID 1 Folder: {}\n", opt(guid), opt(folder)));
+                s.push_str(&format!("\r\nGUID 1: {}\r\nGUID 1 Folder: {}\r\n", opt(guid), opt(folder)));
             }
             BlockKind::Guids { guid1, folder1, guid2, folder2 } => {
-                s.push_str(&format!("\nGUID 1: {}\nGUID 1 Folder: {}\nGUID 2: {}\nGUID 2 Folder: {}\n", opt(guid1), opt(folder1), opt(guid2), opt(folder2)));
+                s.push_str(&format!("\r\nGUID 1: {}\r\nGUID 1 Folder: {}\r\nGUID 2: {}\r\nGUID 2 Folder: {}\r\n", opt(guid1), opt(folder1), opt(guid2), opt(folder2)));
             }
             BlockKind::Beef0004 { created, last_access, identifier, mft, long_name, localised_name } => {
                 let os = match identifier {
@@ -489,24 +489,24 @@ impl Block {
                     0x2e => "Windows 8.1/Windows 10",
                     _ => "Unknown operating system",
                 };
-                s.push_str(&format!("Identifier: {identifier:02X} ({os})\n"));
+                s.push_str(&format!("Identifier: {identifier:02X} ({os})\r\n"));
                 if let Some(t) = created {
-                    s.push_str(&format!("\nCreated On: {}\n", time_text(*t)));
+                    s.push_str(&format!("\r\nCreated On: {}\r\n", time_text(*t)));
                 }
                 if let Some(t) = last_access {
-                    s.push_str(&format!("Last Access: {}\n", time_text(*t)));
+                    s.push_str(&format!("Last Access: {}\r\n", time_text(*t)));
                 }
-                s.push_str(&format!("\nLong Name: {long_name}\n"));
+                s.push_str(&format!("\r\nLong Name: {long_name}\r\n"));
                 if !localised_name.is_empty() {
-                    s.push_str(&format!("Localised Name: {localised_name}\n"));
+                    s.push_str(&format!("Localised Name: {localised_name}\r\n"));
                 }
                 if let Some(e) = mft.entry_number {
-                    s.push_str(&format!("\nMFT Entry Number: {e}\n"));
+                    s.push_str(&format!("\r\nMFT Entry Number: {e}\r\n"));
                 }
                 if let Some(q) = mft.sequence_number {
-                    s.push_str(&format!("MFT Sequence Number: {q}\n"));
+                    s.push_str(&format!("MFT Sequence Number: {q}\r\n"));
                 }
-                s.push('\n');
+                s.push_str("\r\n");
                 let mut note = mft.note.clone();
                 if let (Some(e), Some(q)) = (mft.entry_number, mft.sequence_number) {
                     if e > 0 && q > 0 {
@@ -520,68 +520,68 @@ impl Block {
                     }
                 }
                 if !note.is_empty() {
-                    s.push_str(&format!("File system hint: {note}\n"));
+                    s.push_str(&format!("File system hint: {note}\r\n"));
                 }
             }
             BlockKind::Beef0005 { internal_bags } => {
                 for bag in internal_bags {
                     s.push_str(&bag.to_text());
-                    s.push_str("\n\n");
+                    s.push_str("\r\n\r\n");
                 }
             }
-            BlockKind::UserName(name) => s.push_str(&format!("\nUser Name: {name}\n")),
+            BlockKind::UserName(name) => s.push_str(&format!("\r\nUser Name: {name}\r\n")),
             BlockKind::Beef0008 { timestamp, original_path, recycle_bin_path } => {
-                s.push_str(&format!("\nTimestamp: {}\nOriginal path: {original_path}\nRecycle Bin path {recycle_bin_path}\n", time_text(*timestamp)));
+                s.push_str(&format!("\r\nTimestamp: {}\r\nOriginal path: {original_path}\r\nRecycle Bin path {recycle_bin_path}\r\n", time_text(*timestamp)));
             }
             BlockKind::Beef000b { file_strings, string_date } => {
-                s.push('\n');
+                s.push_str("\r\n");
                 for f in file_strings {
-                    s.push_str(&format!("File: {f}\n"));
+                    s.push_str(&format!("File: {f}\r\n"));
                 }
-                s.push_str(&format!("String date: {}\n", time_text(*string_date)));
+                s.push_str(&format!("String date: {}\r\n", time_text(*string_date)));
             }
             BlockKind::Beef000e { bags } => {
                 if !bags.is_empty() {
-                    s.push_str(&format!("\nInternal ShellBags found: {}\n", bags.len()));
+                    s.push_str(&format!("\r\nInternal ShellBags found: {}\r\n", bags.len()));
                     for (i, bag) in bags.iter().enumerate() {
-                        s.push_str(&format!("---------------------- Bag {} ----------------------\n{}\n", n0(i as i64), bag.to_text()));
+                        s.push_str(&format!("---------------------- Bag {} ----------------------\r\n{}\r\n", n0(i as i64), bag.to_text()));
                     }
-                    s.push_str("--------------------------------------------------\n");
+                    s.push_str("--------------------------------------------------\r\n");
                 }
             }
             BlockKind::Sheets(store) => {
                 for (i, sheet) in store.sheets.iter().enumerate() {
-                    s.push_str(&format!("Sheet #{i} => {}\n", sheet.to_text()));
+                    s.push_str(&format!("Sheet #{i} => {}\r\n", sheet.to_text()));
                 }
             }
-            BlockKind::Value(value) => s.push_str(&format!("Value: {value}\n")),
+            BlockKind::Value(value) => s.push_str(&format!("Value: {value}\r\n")),
             BlockKind::Beef0017 { details } => {
                 if !details.is_empty() {
-                    s.push_str(&format!("Sub shell items detail:\r\n\r\n{details}\n"));
+                    s.push_str(&format!("Sub shell items detail:\r\n\r\n{details}\r\n"));
                 }
             }
-            BlockKind::FileDocumentType(text) => s.push_str(&format!("\nFile Document Type String: {text}\n")),
-            BlockKind::Information(text) => s.push_str(&format!("\nFile name: {text}\n")),
-            BlockKind::Executable(text) => s.push_str(&format!("\nExecutable: {text}\n")),
-            BlockKind::PinType(text) => s.push_str(&format!("\nPin Type: {text}\n")),
+            BlockKind::FileDocumentType(text) => s.push_str(&format!("\r\nFile Document Type String: {text}\r\n")),
+            BlockKind::Information(text) => s.push_str(&format!("\r\nFile name: {text}\r\n")),
+            BlockKind::Executable(text) => s.push_str(&format!("\r\nExecutable: {text}\r\n")),
+            BlockKind::PinType(text) => s.push_str(&format!("\r\nPin Type: {text}\r\n")),
             BlockKind::Beef0025 { file_time1, file_time2 } => {
-                s.push_str(&format!("\nFileTime 1: {}\nFileTime 2: {}\n", time_text(*file_time1), time_text(*file_time2)));
+                s.push_str(&format!("\r\nFileTime 1: {}\r\nFileTime 2: {}\r\n", time_text(*file_time1), time_text(*file_time2)));
             }
             BlockKind::Beef0026 { store, created, modified, accessed } => {
                 const FORMAT: &str = "yyyy-MM-dd HH:mm:ss.fffffff";
-                s.push('\n');
+                s.push_str("\r\n");
                 if let Some(t) = created {
-                    s.push_str(&format!("Created: {}\n", t.format(FORMAT)));
+                    s.push_str(&format!("Created: {}\r\n", t.format(FORMAT)));
                 }
                 if let Some(t) = modified {
-                    s.push_str(&format!("Last modified: {}\n", t.format(FORMAT)));
+                    s.push_str(&format!("Last modified: {}\r\n", t.format(FORMAT)));
                 }
                 if let Some(t) = accessed {
-                    s.push_str(&format!("Last accessed: {}\n", t.format(FORMAT)));
+                    s.push_str(&format!("Last accessed: {}\r\n", t.format(FORMAT)));
                 }
                 if let Some(store) = store {
                     if !store.sheets.is_empty() {
-                        s.push_str(&format!("Property Sheets\n{}\n\n", store.to_text()));
+                        s.push_str(&format!("Property Sheets\r\n{}\r\n\r\n", store.to_text()));
                     }
                 }
             }

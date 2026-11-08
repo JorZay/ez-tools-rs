@@ -56,7 +56,7 @@ fn read_items(raw: &[u8], mut index: i64, key_name: &str, value_name: &str, out:
         if size < 3 || index + size > length {
             let message = format!("Key: {key_name}, Value name: {value_name}, Message: shell item at offset 0x{index:X} has size {size}, past the end of the value ({length} bytes)");
             details.push_str(&message);
-            details.push('\n');
+            details.push_str("\r\n");
             out.errors.push(message);
             break;
         }
@@ -70,7 +70,7 @@ fn read_items(raw: &[u8], mut index: i64, key_name: &str, value_name: &str, out:
             Err(e) => {
                 let message = format!("Key: {key_name}, Value name: {value_name}, Message: shell item 0x{:02x} could not be parsed: {e}", bytes[2]);
                 details.push_str(&message);
-                details.push('\n');
+                details.push_str("\r\n");
                 out.errors.push(message);
                 continue;
             }
@@ -78,12 +78,12 @@ fn read_items(raw: &[u8], mut index: i64, key_name: &str, value_name: &str, out:
         if item.class == "ShellBagUnknown" {
             let message = format!("Key: {key_name}, Value name: {value_name}, Message: **** Unsupported ShellID: 0x{:02x}. Send this ID to saericzimmerman@gmail.com so support can be added!! ****", bytes[2]);
             details.push_str(&message);
-            details.push('\n');
+            details.push_str("\r\n");
             out.errors.push(message);
             continue;
         }
         details.push_str(&item.to_text());
-        details.push('\n');
+        details.push_str("\r\n");
         parts.push(item.value);
     }
     Ok(ReadItems { details, absolute_path: parts.join("\\") })
@@ -217,7 +217,7 @@ impl<'a> Reader<'a> {
     /// ReadBytes: what is left, when that is less
     fn bytes(&mut self, count: i64) -> NetResult<&'a [u8]> {
         if count < 0 {
-            return Err(format!("count ('{count}') must be a non-negative value. (Parameter 'count')\nActual value was {count}."));
+            return Err(format!("count ('{count}') must be a non-negative value. (Parameter 'count')\r\nActual value was {count}."));
         }
         if count > 0x7FFF_FFC7 {
             return Err("Array dimensions exceeded supported range.".to_string());

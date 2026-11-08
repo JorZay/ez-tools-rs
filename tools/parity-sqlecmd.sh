@@ -10,6 +10,7 @@
 # LANG=en_US.UTF-8. Blob names only differ in the characters Windows doesn't allow in a file name, which this port replaces as
 # Windows does: those are replaced on both sides before comparing. Build the release binary first (cargo build --release -p sqlecmd).
 set -uo pipefail
+. "$(dirname "$0")/platform.sh"
 
 dll=$1
 work=${2:-$(mktemp -d)}
@@ -61,7 +62,7 @@ while IFS= read -r line; do
         diff <(cut -f1 "$work/$n-ref.names") <(cut -f1 "$work/$n-ours.names") | head -20
     else
         while IFS=$'\t' read -r name f o; do
-            if cmp -s <(sed -E "s#$work/$n-ref#{out}#g" "$work/$n-ref/$f") <(sed -E "s#$work/$n-ours#{out}#g" "$work/$n-ours/$o"); then
+            if cmp -s <(sed -E "s#$work/$n-ref#{out}#g" "$work/$n-ref/$f" | platform) <(sed -E "s#$work/$n-ours#{out}#g" "$work/$n-ours/$o" | platform); then
                 same=$((same + 1))
             else
                 diff=$((diff + 1))

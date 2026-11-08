@@ -15,7 +15,7 @@ pub fn new_0x01(raw: &[u8]) -> NetResult<ShellItem> {
         item.bag_type = "HyperVResource";
         let letter = unicode_string(raw, 6, 4)?.replace('\0', "");
         item.value = unicode_string(raw, 0x32, raw.len() as i64 - 0x32)?.replace('\0', "");
-        item.set_before_line(if letter.is_empty() { None } else { Some(format!("Drive Letter: {letter}\n\n")) });
+        item.set_before_line(if letter.is_empty() { None } else { Some(format!("Drive Letter: {letter}\r\n\r\n")) });
         item.drive_letter = Some(letter);
         return Ok(item);
     }
@@ -54,11 +54,11 @@ pub fn new_0x02(raw: &[u8]) -> NetResult<ShellItem> {
     index += 8 + 4;
     let value = unicode_string(raw, index, raw.len() as i64 - index)?;
     item.value = net_trim(&value.replace('\0', " "));
-    let mut before = format!("Created On: {}\nModified: {}\n", time_text(created), time_text(modified));
+    let mut before = format!("Created On: {}\r\nModified: {}\r\n", time_text(created), time_text(modified));
     if let Some(t) = accessed {
-        before.push_str(&format!("Last Access: {}\n", time_text(t)));
+        before.push_str(&format!("Last Access: {}\r\n", time_text(t)));
     }
-    before.push('\n');
+    before.push_str("\r\n");
     item.set_before_line(Some(before));
     item.last_modification = Some(modified);
     item.last_access = accessed;
@@ -82,7 +82,7 @@ pub fn new_0x03(raw: &[u8]) -> NetResult<ShellItem> {
         date = from_oa_date(v).ok();
     }
     item.value = match date.filter(|d| d.parts().year > 1900) {
-        Some(d) => format!("{s1} {s2} {s3} Timestamp: {}", d.format("M/d/yyyy h:mm:ss\u{202f}tt")),
+        Some(d) => format!("{s1} {s2} {s3} Timestamp: {}", d.format("M/d/yyyy h:mm:ss tt")),
         None => format!("{s1} {s2} {s3} (No date found)"),
     };
     Ok(item)
@@ -94,7 +94,7 @@ fn time_and_name(class: &'static str, raw: &[u8], time_at: i64, name_at: i64) ->
     let time = from_file_time(i64_at(raw, time_at)?);
     let text = ansi_at(raw, name_at, raw.len() as i64 - name_at)?;
     item.value = text.split('\0').next().unwrap_or_default().to_string();
-    item.set_before_line(Some(format!("Timestamp: {}\n", time_text(time))));
+    item.set_before_line(Some(format!("Timestamp: {}\r\n", time_text(time))));
     item.set("Timestamp", Value::time(time));
     Ok(item)
 }
@@ -135,7 +135,7 @@ pub fn new_0x0a(raw: &[u8]) -> NetResult<ShellItem> {
     index += 8 + 0x18;
     size = i16_at(raw, index)?;
     index += 2;
-    item.set_before_line(Some(format!("Timestamp: {}\r\nTimestamp2: {}\n", time_text(t1), time_text(t2))));
+    item.set_before_line(Some(format!("Timestamp: {}\r\nTimestamp2: {}\r\n", time_text(t1), time_text(t2))));
     if size == 0 {
         item.value = format!("{s1}: {s2}");
         return Ok(item);
@@ -155,7 +155,7 @@ pub fn new_0x11(raw: &[u8]) -> NetResult<ShellItem> {
     let t2 = from_file_time(i64_at(raw, 0x16)?);
     let text = unicode_string(raw, 0x2e, raw.len() as i64 - 0x2e)?;
     item.value = text.split('\0').next().unwrap_or_default().to_string();
-    item.set_before_line(Some(format!("Timestamp: {}Timestamp2: {}\n", time_text(t1), time_text(t2))));
+    item.set_before_line(Some(format!("Timestamp: {}Timestamp2: {}\r\n", time_text(t1), time_text(t2))));
     item.set("Timestamp", Value::time(t1));
     item.set("Timestamp2", Value::time(t2));
     Ok(item)
@@ -275,7 +275,7 @@ fn network(class: &'static str, friendly_name: &str, raw: &[u8]) -> NetResult<Sh
     let (location, description) = crate::utils::network_location(raw)?;
     item.value = location;
     item.set("Description", Value::opt_text(description.as_deref()));
-    item.set_before_line(description.map(|d| format!("Description: {d}\n")));
+    item.set_before_line(description.map(|d| format!("Description: {d}\r\n")));
     Ok(item)
 }
 
@@ -375,10 +375,10 @@ fn name_or_zip(class: &'static str, raw: &[u8]) -> NetResult<ShellItem> {
         let len1 = i64::from(i16_at(raw, 28)?);
         let len2 = i64::from(i16_at(raw, 30)?);
         name = unicode_string(raw, 32, (len1 + len2) * 2)?.replace('\0', "");
-        item.set_before_line(Some(format!("Modified On: {}\n\n", time_text(modified))));
+        item.set_before_line(Some(format!("Modified On: {}\r\n\r\n", time_text(modified))));
     }
     item.value = name;
-    item.after = "\n".to_string();
+    item.after = "\r\n".to_string();
     Ok(item)
 }
 
@@ -408,7 +408,7 @@ pub fn new_0x5c(raw: &[u8]) -> NetResult<ShellItem> {
     let text = ansi_at(raw, index, raw.len() as i64 - index - 4)?;
     let parts = crate::utils::split_nul_no_empty(&text);
     let (Some(a), Some(b)) = (parts.first(), parts.get(1)) else { return Err(ez_common::net::ARRAY_INDEX.to_string()) };
-    item.set_before_line(Some(format!("Description: {a} ({b})\n")));
+    item.set_before_line(Some(format!("Description: {a} ({b})\r\n")));
     item.set("Description", Value::text(format!("{a} ({b})")));
     Ok(item)
 }
@@ -512,7 +512,7 @@ pub fn new_0xc3(raw: &[u8]) -> NetResult<ShellItem> {
             description = Some(d.to_string());
         }
         item.set("LocationDescription", Value::opt_text(description.as_deref()));
-        item.set_before_line(Some(format!("Location description: {}\r\n\n", description.unwrap_or_default())));
+        item.set_before_line(Some(format!("Location description: {}\r\n\r\n", description.unwrap_or_default())));
         return Ok(item);
     }
     let text = ansi_at(raw, index, sep - 5 - 1)?;
@@ -520,7 +520,7 @@ pub fn new_0xc3(raw: &[u8]) -> NetResult<ShellItem> {
     let mut at = sep + 2;
     item.value = parts.first().ok_or_else(index_error)?.to_string();
     item.set("LocationDescription", Value::text(parts[1..].join(", ")));
-    item.set_before_line(Some(format!("Location description: {}\r\n\n", parts[1..].join(", "))));
+    item.set_before_line(Some(format!("Location description: {}\r\n\r\n", parts[1..].join(", "))));
     if at == raw.len() as i64 {
         return Ok(item);
     }
@@ -586,6 +586,6 @@ pub fn new_0x1d(raw: &[u8]) -> NetResult<ShellItem> {
         len += 1;
     }
     item.value = ansi_at(raw, 0x26, len)?;
-    item.set_before_line(Some(format!("Time stamp: {}\n\n", time.format("M/d/yyyy h:mm:ss\u{202f}tt K"))));
+    item.set_before_line(Some(format!("Time stamp: {}\r\n\r\n", time.format("M/d/yyyy h:mm:ss tt K"))));
     Ok(item)
 }

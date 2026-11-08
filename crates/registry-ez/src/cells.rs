@@ -445,7 +445,7 @@ pub fn timespan(ticks: i64) -> String {
     out
 }
 
-/// A float's ToString() with the en-US culture (ICU): infinities are ∞
+/// A float's ToString() with the en-US culture: infinities are ∞ (as on Windows and Linux alike)
 pub fn float_text(v: f64, single: bool) -> String {
     if v.is_infinite() {
         return if v > 0.0 { "∞".into() } else { "-∞".into() };
@@ -453,9 +453,9 @@ pub fn float_text(v: f64, single: bool) -> String {
     if single { ez_common::dotnet::dotnet_f32(v as f32) } else { ez_common::dotnet::dotnet_f64(v) }
 }
 
-/// DateTimeOffset.ToString() with the en-US culture (ICU, which puts a narrow no-break space before AM/PM)
+/// DateTimeOffset.ToString() with the en-US culture, as on Windows (a plain space before AM/PM; ICU, on Linux, has U+202F)
 pub fn en_us_date(t: ez_common::Timestamp) -> String {
-    t.format("M/d/yyyy h:mm:ss\u{202F}tt zzz")
+    t.format("M/d/yyyy h:mm:ss tt zzz")
 }
 
 #[cfg(test)]
@@ -465,8 +465,8 @@ mod tests {
     #[test]
     fn dates_as_dotnet_writes_them_in_en_us() {
         let afternoon = ez_common::Timestamp::from_parts(2014, 7, 3, 18, 5, 37, 0).unwrap();
-        assert_eq!(en_us_date(afternoon), "7/3/2014 6:05:37\u{202F}PM +00:00");
+        assert_eq!(en_us_date(afternoon), "7/3/2014 6:05:37 PM +00:00");
         let morning = ez_common::Timestamp::from_parts(2014, 12, 25, 6, 5, 37, 0).unwrap();
-        assert_eq!(en_us_date(morning), "12/25/2014 6:05:37\u{202F}AM +00:00");
+        assert_eq!(en_us_date(morning), "12/25/2014 6:05:37 AM +00:00");
     }
 }

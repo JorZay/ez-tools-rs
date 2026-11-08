@@ -11,6 +11,7 @@
 # (cargo build --release). The outputs are deleted at the end, as they hold copies of the data; PARITY_KEEP=1 keeps them,
 # to look at a difference.
 set -uo pipefail
+. "$(dirname "$0")/platform.sh"
 
 dll=$1
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -63,7 +64,7 @@ while IFS= read -r line; do
     while read -r f; do
         if [ "$(basename "$f")" = "ConsoleLog.txt" ]; then
             if cmp -s <(logfile "$work/$n-ref/$f" "$work/$n-ref") <(logfile "$work/$n-ours/$f" "$work/$n-ours"); then same=$((same + 1)); else diff=$((diff + 1)); echo "DIFF $line: $f"; fi
-        elif cmp -s "$work/$n-ref/$f" "$work/$n-ours/$f"; then
+        elif cmp -s <(platform "$work/$n-ref/$f") <(platform "$work/$n-ours/$f"); then
             same=$((same + 1))
         else
             diff=$((diff + 1))

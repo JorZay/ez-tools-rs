@@ -1297,22 +1297,22 @@ fn open_xhtml(html: &str, stamp: &str, kind: &str, log: &mut Logger) -> Result<N
     let styles = combine(&folder, "styles");
     std::fs::create_dir_all(&styles).map_err(|e| io_failure(&styles, &e))?;
     let normalize = combine(&styles, "normalize.css");
-    std::fs::write(&normalize, include_str!("../data/normalize.css").trim_start_matches('\u{feff}')).map_err(|e| io_failure(&normalize, &e))?;
+    std::fs::write(&normalize, ez_common::dotnet::crlf_lines(include_str!("../data/normalize.css").trim_start_matches('\u{feff}'))).map_err(|e| io_failure(&normalize, &e))?;
     let style = combine(&styles, "style.css");
-    std::fs::write(&style, include_str!("../data/style.css").trim_start_matches('\u{feff}')).map_err(|e| io_failure(&style, &e))?;
+    std::fs::write(&style, ez_common::dotnet::crlf_lines(include_str!("../data/style.css").trim_start_matches('\u{feff}'))).map_err(|e| io_failure(&style, &e))?;
     let path = combine(&folder, "index.xhtml");
     log.info(&format!("Saving HTML output to {path}"));
     let mut w = NetWriter::create(&path, "\u{feff}".as_bytes()).map_err(|e| io_failure(&path, &e))?;
-    w.write_text("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<?xml-stylesheet href=\"styles/normalize.css\"?>\n<?xml-stylesheet href=\"styles/style.css\"?>\n<document>").map_err(|e| io_failure(&path, &e))?;
+    w.write_text("<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<?xml-stylesheet href=\"styles/normalize.css\"?>\r\n<?xml-stylesheet href=\"styles/style.css\"?>\r\n<document>").map_err(|e| io_failure(&path, &e))?;
     Ok(w)
 }
 
 /// `xml.WriteElementString`
 fn element(out: &mut String, indent: &str, name: &str, value: &str) {
     if value.is_empty() {
-        out.push_str(&format!("\n{indent}<{name} />"));
+        out.push_str(&format!("\r\n{indent}<{name} />"));
     } else {
-        out.push_str(&format!("\n{indent}<{name}>{}</{name}>", xml_text(value)));
+        out.push_str(&format!("\r\n{indent}<{name}>{}</{name}>", xml_text(value)));
     }
 }
 
@@ -1338,7 +1338,7 @@ fn element_lnk_rest(out: &mut String, c: &LnkColumns) {
 }
 
 fn auto_container(auto: &AutomaticDestination, rows: &[AutoCsv], source: &[String; 4]) -> String {
-    let mut s = String::from("\n    <Container>");
+    let mut s = String::from("\r\n    <Container>");
     const C: &str = "        ";
     const I: &str = "            ";
     element(&mut s, C, "SourceFile", &auto.source_file);
@@ -1350,7 +1350,7 @@ fn auto_container(auto: &AutomaticDestination, rows: &[AutoCsv], source: &[Strin
     element(&mut s, C, "DestListVersion", &auto.dest_list_version.to_string());
     element(&mut s, C, "LastUsedEntryNumber", &auto.last_used_entry_number.to_string());
     for o in rows {
-        s.push_str(&format!("\n        <lftColumn>\n            <EntryNumber_large title=\"Entry number\">{}</EntryNumber_large>\n        </lftColumn>\n        <rgtColumn>", xml_text(&o.entry_number)));
+        s.push_str(&format!("\r\n        <lftColumn>\r\n            <EntryNumber_large title=\"Entry number\">{}</EntryNumber_large>\r\n        </lftColumn>\r\n        <rgtColumn>", xml_text(&o.entry_number)));
         element(&mut s, I, "TargetIDAbsolutePath", &remove_invalid_xml_chars(&opt(&o.lnk.target_id_absolute_path)));
         element(&mut s, I, "CreationTime", &opt(&o.creation_time));
         element(&mut s, I, "LastModified", &opt(&o.last_modified));
@@ -1370,24 +1370,24 @@ fn auto_container(auto: &AutomaticDestination, rows: &[AutoCsv], source: &[Strin
         element(&mut s, I, "TargetAccessed", &opt(&o.lnk.target_accessed));
         element(&mut s, I, "InteractionCount", &opt(&o.interaction_count));
         element_lnk_rest(&mut s, &o.lnk);
-        s.push_str("\n        </rgtColumn>");
+        s.push_str("\r\n        </rgtColumn>");
     }
-    s.push_str("\n    </Container>");
+    s.push_str("\r\n    </Container>");
     s
 }
 
 fn custom_container(custom: &CustomDestination, rows: &[CustomCsv], source: &[String; 4]) -> String {
-    let mut s = String::from("\n    <Container>");
+    let mut s = String::from("\r\n    <Container>");
     const C: &str = "        ";
     const I: &str = "            ";
-    s.push_str(&format!("\n        <SourceFile title=\"Note: Location and name of processed Jump List\">{}</SourceFile>", xml_text(&custom.source_file)));
+    s.push_str(&format!("\r\n        <SourceFile title=\"Note: Location and name of processed Jump List\">{}</SourceFile>", xml_text(&custom.source_file)));
     element(&mut s, C, "SourceCreated", &source[1]);
     element(&mut s, C, "SourceModified", &source[2]);
     element(&mut s, C, "SourceAccessed", &source[3]);
     element(&mut s, C, "AppId", &custom.app_id);
     element(&mut s, C, "AppIdDescription", &custom.app_id_description);
     for (index, o) in rows.iter().enumerate() {
-        s.push_str(&format!("\n        <lftColumn>\n            <EntryNumber_large title=\"Note: Lnk position in file\">{index}</EntryNumber_large>\n        </lftColumn>\n        <rgtColumn>"));
+        s.push_str(&format!("\r\n        <lftColumn>\r\n            <EntryNumber_large title=\"Note: Lnk position in file\">{index}</EntryNumber_large>\r\n        </lftColumn>\r\n        <rgtColumn>"));
         element(&mut s, I, "EntryName", &o.entry_name);
         element(&mut s, I, "TargetIDAbsolutePath", &opt(&o.lnk.target_id_absolute_path));
         if !opt(&o.lnk.arguments).is_empty() {
@@ -1397,9 +1397,9 @@ fn custom_container(custom: &CustomDestination, rows: &[CustomCsv], source: &[St
         element(&mut s, I, "TargetModified", &opt(&o.lnk.target_modified));
         element(&mut s, I, "TargetAccessed", &opt(&o.lnk.target_accessed));
         element_lnk_rest(&mut s, &o.lnk);
-        s.push_str("\n        </rgtColumn>");
+        s.push_str("\r\n        </rgtColumn>");
     }
-    s.push_str("\n    </Container>");
+    s.push_str("\r\n    </Container>");
     s
 }
 
@@ -1516,7 +1516,7 @@ fn export_auto(work: &Work, args: &Args, format: &str, stamp: &str, log: &mut Lo
         w.flush().map_err(|e| io_failure(&path, &e))?;
     }
     if let Some(mut w) = xml {
-        w.write_text("\n</document>").and_then(|()| w.flush()).map_err(|e| io_failure("index.xhtml", &e))?;
+        w.write_text("\r\n</document>").and_then(|()| w.flush()).map_err(|e| io_failure("index.xhtml", &e))?;
     }
     Ok(())
 }
@@ -1562,7 +1562,7 @@ fn export_custom(work: &Work, args: &Args, format: &str, stamp: &str, log: &mut 
         w.flush().map_err(|e| io_failure(&path, &e))?;
     }
     if let Some(mut w) = xml {
-        w.write_text("\n</document>").and_then(|()| w.flush()).map_err(|e| io_failure("index.xhtml", &e))?;
+        w.write_text("\r\n</document>").and_then(|()| w.flush()).map_err(|e| io_failure("index.xhtml", &e))?;
     }
     Ok(())
 }

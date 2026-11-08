@@ -8,6 +8,7 @@
 # out of the comparison: each read can update a file's access time, so the two tools see different ones. The outputs are
 # deleted at the end, as they hold copies of the data.
 set -uo pipefail
+. "$(dirname "$0")/platform.sh"
 
 dll=$1
 shift
@@ -39,7 +40,7 @@ masked() {
 }
 
 check() {
-    if cmp -s <(masked "$1") <(masked "$2"); then
+    if cmp -s <(masked "$1" | platform) <(masked "$2" | platform); then
         same=$((same + 1))
     else
         diff=$((diff + 1))

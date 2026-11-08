@@ -755,7 +755,7 @@ impl Run {
                 row.write_csv(text);
             }
             if let Some((_, _, text)) = &mut json_out {
-                let _ = writeln!(text, "{}", Row::new(pf, JSON_DATE_FORMAT)?.to_json());
+                let _ = write!(text, "{}{}", Row::new(pf, JSON_DATE_FORMAT)?.to_json(), ez_common::dotnet::NEW_LINE);
             }
             if let Some(doc) = &mut html_out {
                 doc.container(&row);

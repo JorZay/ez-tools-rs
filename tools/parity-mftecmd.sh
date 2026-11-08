@@ -8,6 +8,7 @@
 # {out} is replaced by the output folder. --csv/--csvf (and --json/--jsonf for $MFT, $J and $LogFile) are added.
 # .gz files are decompressed first. Build the release binary first (cargo build --release).
 set -uo pipefail
+. "$(dirname "$0")/platform.sh"
 
 dll=$1
 work=${2:-$(mktemp -d)}
@@ -46,7 +47,7 @@ while IFS=$'\t' read -r file extra; do
         echo "DIFF exit code: $file $extra ($(cat "$work/$n-ref.exit") vs $(cat "$work/$n-ours.exit"))"
     fi
     while IFS= read -r f; do
-        if cmp -s "$work/$n-ref/$f" "$work/$n-ours/$f"; then
+        if cmp -s <(platform "$work/$n-ref/$f") <(platform "$work/$n-ours/$f"); then
             same=$((same + 1))
         else
             diff=$((diff + 1))

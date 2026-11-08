@@ -208,7 +208,7 @@ or the system's temporary folder) and are merged, so the size of a case is not l
 
 - Output is the same as EvtxECmd's byte for byte (CSV, JSON, `--fj`) when rows are in file order (`--unsorted`);
   `tools/parity.sh` checks it. The default order is by time.
-- JSON lines end with LF (as EvtxECmd on Linux writes them; on Windows it writes CRLF). CSV lines end with CRLF.
+- JSON lines end with CRLF, as EvtxECmd writes them on Windows (on Linux it writes LF). CSV lines end with CRLF.
 - `-f` and `-d` can be repeated and combined. `--csvf`/`--jsonf` are gone: `--csv`/`--json` take a file name.
 - Not ported: `--vss` (Volume Shadow Copies) and reading locked files from a live system; this tool is for
   extractions. Mount shadow copies (e.g. with `vshadowmount`) and pass the folders with `-d`. `--xml` is not ported

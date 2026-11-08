@@ -10,6 +10,7 @@
 # (quoted as in a shell). {out} is replaced by the run's output folder, which is also where relative paths start. The original
 # runs with LANG=en_US.UTF-8 and TZ=UTC. tools/gen-rbcmd-cases.py builds samples.
 set -uo pipefail
+. "$(dirname "$0")/platform.sh"
 
 dll=$1
 work=${2:-$(mktemp -d)}
@@ -61,9 +62,9 @@ while IFS= read -r line; do
         while IFS=$'\t' read -r name f o; do
             case "$name" in
                 *_ConsoleLog.txt)
-                    same_file() { cmp -s <(log_file "$work/$n-ref/$f" "$work/$n-ref") <(log_file "$work/$n-ours/$o" "$work/$n-ours"); } ;;
+                    same_file() { cmp -s <(log_file "$work/$n-ref/$f" "$work/$n-ref" | platform) <(log_file "$work/$n-ours/$o" "$work/$n-ours" | platform); } ;;
                 *)
-                    same_file() { sed "s#$work/$n-ref#{out}#g" "$work/$n-ref/$f" | cmp -s - <(sed "s#$work/$n-ours#{out}#g" "$work/$n-ours/$o"); } ;;
+                    same_file() { sed "s#$work/$n-ref#{out}#g" "$work/$n-ref/$f" | platform | cmp -s - <(sed "s#$work/$n-ours#{out}#g" "$work/$n-ours/$o" | platform); } ;;
             esac
             if same_file; then
                 same=$((same + 1))

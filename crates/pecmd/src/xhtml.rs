@@ -62,14 +62,14 @@ impl Document {
         // created now, so a path that can't be written stops the exports here
         std::fs::File::create(&path).map_err(|e| io_message(&path, &e))?;
         let text = String::from(
-            "\u{FEFF}<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<?xml-stylesheet href=\"styles/normalize.css\"?>\n<?xml-stylesheet href=\"styles/style.css\"?>\n<document>",
+            "\u{FEFF}<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<?xml-stylesheet href=\"styles/normalize.css\"?>\r\n<?xml-stylesheet href=\"styles/style.css\"?>\r\n<document>",
         );
         Ok(Document { path, text })
     }
 
     fn element(&mut self, name: &str, title: Option<&str>, value: &str) {
         let out = &mut self.text;
-        write!(out, "\n        <{name}").unwrap();
+        write!(out, "\r\n        <{name}").unwrap();
         if let Some(t) = title {
             out.push_str(" title=\"");
             escape(out, t, true);
@@ -85,7 +85,7 @@ impl Document {
     }
 
     pub fn container(&mut self, r: &Row) {
-        self.text.push_str("\n    <Container>");
+        self.text.push_str("\r\n    <Container>");
         self.element("SourceFile", None, &r.source_filename);
         self.element("SourceCreated", None, &r.source_created);
         self.element("SourceModified", None, &r.source_modified);
@@ -122,11 +122,11 @@ impl Document {
             Some("A comma separated list of all files that were loaded by the executable"),
             r.files_loaded.as_deref().unwrap_or(""),
         );
-        self.text.push_str("\n    </Container>");
+        self.text.push_str("\r\n    </Container>");
     }
 
     pub fn finish(mut self) -> Result<(), String> {
-        self.text.push_str("\n</document>");
+        self.text.push_str("\r\n</document>");
         std::fs::write(&self.path, &self.text).map_err(|e| io_message(&self.path, &e))
     }
 }

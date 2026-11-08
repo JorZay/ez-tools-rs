@@ -63,7 +63,7 @@ pub fn write_json_row(out: &mut String, row: &Row, source: &str, full_json: bool
     if full_json {
         if let Some(e) = &row.event_json {
             out.push_str(e);
-            out.push('\n');
+            out.push_str(ez_common::dotnet::NEW_LINE);
             return;
         }
     }
@@ -97,5 +97,5 @@ pub fn write_json_row(out: &mut String, row: &Row, source: &str, full_json: bool
     o.number("RecordNumber", row.record_number)
         .string("RenderingInfo", row.rendering_info.as_deref());
     out.push_str(&o.finish());
-    out.push('\n');
+    out.push_str(ez_common::dotnet::NEW_LINE);
 }

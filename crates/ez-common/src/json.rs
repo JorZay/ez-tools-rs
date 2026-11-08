@@ -262,7 +262,7 @@ pub fn jsv_value(value: &str) -> String {
 /// JsvFormatter.Format: braces make new lines even inside quotes; commas don't
 pub fn jsv_format(text: &str) -> String {
     fn tab_line(out: &mut String, tabs: i32) {
-        out.push('\n');
+        out.push_str(crate::dotnet::NEW_LINE);
         for _ in 0..tabs {
             out.push('\t');
         }
@@ -325,7 +325,7 @@ mod value_tests {
     fn nulls_are_left_out_and_empty_lists_stay_on_their_line() {
         let v = Value::object(vec![("A", Value::Null), ("B", Value::List(Vec::new())), ("C", Value::text("x: y")), ("D", Value::text("")), ("E", Value::Bool(true))]);
         assert_eq!(v.to_json(), r#"{"B":[],"C":"x: y","D":"","E":true}"#);
-        assert_eq!(v.dump(), "{\n\tB: [],\n\tC: \"x: y\",\n\tD: \"\",\n\tE: True\n}");
+        assert_eq!(v.dump(), "{\r\n\tB: [],\r\n\tC: \"x: y\",\r\n\tD: \"\",\r\n\tE: True\r\n}");
     }
 
     #[test]
@@ -335,8 +335,8 @@ mod value_tests {
         assert_eq!(object(1e20).to_json(), r#"{"R":1e+20}"#);
         assert_eq!(object(f32::NAN).to_json(), r#"{"R":NaN}"#);
         assert_eq!(object(f32::INFINITY).to_json(), r#"{"R":Infinity}"#);
-        assert_eq!(object(3e-45).dump(), "{\n\tR: 3E-45\n}");
-        assert_eq!(object(f32::MAX).dump(), "{\n\tR: 3.4028235e+38\n}");
+        assert_eq!(object(3e-45).dump(), "{\r\n\tR: 3E-45\r\n}");
+        assert_eq!(object(f32::MAX).dump(), "{\r\n\tR: 3.4028235e+38\r\n}");
     }
 
     #[test]

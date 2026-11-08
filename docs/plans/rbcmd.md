@@ -33,8 +33,8 @@ RBCmd targets `net10.0` as well as `net472`, and runs here on .NET 10. `-d` diff
   the log exist even when the run stops at a missing file.
 - `$R` folders: links to folders are followed and a link's size is its own, not its target's. One failure loses the whole list.
 - INFO2's ANSI names: bytes over 0x7F are `?`.
-- `--dt` is .NET's `DateTimeOffset.ToString` in en-US: an empty format, and the standard ones, with U+202F before AM and PM, as ICU
-  has it here. `U` is an error for this type. This is `Timestamp::format` in `ez-common`; see `docs/cli-options.md`.
+- `--dt` is .NET's `DateTimeOffset.ToString` in en-US: an empty format, and the standard ones, with a plain space before AM and PM, as
+  .NET has it on Windows. `U` is an error for this type. This is `Timestamp::format` in `ez-common`; see `docs/cli-options.md`.
 
 ## Known differences
 

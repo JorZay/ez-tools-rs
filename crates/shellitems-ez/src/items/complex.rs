@@ -44,10 +44,10 @@ pub fn new_0x31(raw: &[u8]) -> NetResult<ShellItem> {
     let before = |short: &str| {
         let mut s = String::new();
         if !short.is_empty() {
-            s.push_str(&format!("Short name: {short}\n"));
+            s.push_str(&format!("Short name: {short}\r\n"));
         }
         s.push_str(&time_line("Modified", modified));
-        s.push('\n');
+        s.push_str("\r\n");
         s
     };
     if beef_position == 0 {
@@ -136,13 +136,13 @@ pub fn new_0x32(raw: &[u8]) -> NetResult<ShellItem> {
     let text_before = |short: &str, size: i32, modified: Option<Timestamp>| {
         let mut s = String::new();
         if !short.is_empty() {
-            s.push_str(&format!("Short name: {short}\n"));
+            s.push_str(&format!("Short name: {short}\r\n"));
         }
         if size > 0 {
-            s.push_str(&format!("\nFile size: {}\n", crate::utils::n0(i64::from(size))));
+            s.push_str(&format!("\r\nFile size: {}\r\n", crate::utils::n0(i64::from(size))));
         }
         s.push_str(&time_line("Modified On", modified));
-        s.push('\n');
+        s.push_str("\r\n");
         s
     };
     if byte_at(raw, 4)? == 0x10 && !has_beef0004(raw) {
@@ -276,7 +276,7 @@ pub(super) fn property_view(item: &mut ShellItem, raw: &[u8], guids: bool) -> Ne
 fn store_part(item: &mut ShellItem) {
     if let Some(store) = &item.property_store {
         if !store.sheets.is_empty() {
-            item.parts.push(Part::Store("Property Sheets\n".to_string(), store.clone()));
+            item.parts.push(Part::Store("Property Sheets\r\n".to_string(), store.clone()));
         }
     }
 }
@@ -308,7 +308,7 @@ fn windows_backup(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
     index += 16;
     guid_text(copy(raw, index, 16)?)?;
     item.parts.push(Part::Text(format!(
-        "Modified Date From Backup: {}\n\nCreated Date From Backup: {}\n\nBackup Date Time: {}\n\nBackup Unknown Date Time: {}\n\n",
+        "Modified Date From Backup: {}\r\n\r\nCreated Date From Backup: {}\r\n\r\nBackup Date Time: {}\r\n\r\nBackup Unknown Date Time: {}\r\n\r\n",
         crate::utils::time_text(modified),
         crate::utils::time_text(created),
         crate::utils::time_text(backup),
@@ -746,29 +746,29 @@ fn zero_view_guid(item: &mut ShellItem, raw: &[u8]) -> NetResult<()> {
 fn zero_parts(item: &mut ShellItem, zero: &Zero) {
     let mut s = String::new();
     if !zero.short_name.is_empty() {
-        s.push_str(&format!("Short name: {}\n", zero.short_name));
+        s.push_str(&format!("Short name: {}\r\n", zero.short_name));
     }
     if let Some(t) = zero.ftp_time {
-        s.push_str(&format!("\nFTP {} time: {}\n", if zero.is_ftp_file { "file" } else { "folder" }, crate::utils::time_text(t)));
+        s.push_str(&format!("\r\nFTP {} time: {}\r\n", if zero.is_ftp_file { "file" } else { "folder" }, crate::utils::time_text(t)));
     }
     if zero.is_ftp_file {
-        s.push_str(&format!("File size: {}\n", crate::utils::n0(i64::from(zero.file_size))));
+        s.push_str(&format!("File size: {}\r\n", crate::utils::n0(i64::from(zero.file_size))));
     }
     if let Some(url) = &zero.full_url {
-        s.push_str(&format!("Full URL: {url}\n"));
+        s.push_str(&format!("Full URL: {url}\r\n"));
     }
     s.push_str(&time_line("Modified On", zero.modified));
     let mut parts = Vec::new();
     if !item.property_stores.is_empty() {
-        s.push_str(&format!("\nProperty stores found: {}\n", item.property_stores.len()));
+        s.push_str(&format!("\r\nProperty stores found: {}\r\n", item.property_stores.len()));
         parts.push(Part::Text(std::mem::take(&mut s)));
         for (n, store) in item.property_stores.iter().enumerate() {
             if !store.sheets.is_empty() {
-                parts.push(Part::Store(format!("Property Sheets for Property store {}\n", crate::utils::n0(n as i64)), store.clone()));
+                parts.push(Part::Store(format!("Property Sheets for Property store {}\r\n", crate::utils::n0(n as i64)), store.clone()));
             }
         }
     }
-    s.push('\n');
+    s.push_str("\r\n");
     parts.push(Part::Text(s));
     item.parts = parts;
     item.short_name = Some(zero.short_name.clone());

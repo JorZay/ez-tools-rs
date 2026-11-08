@@ -422,7 +422,7 @@ impl ExtraBlock {
             ExtraBlock::PropertyStore(store) => {
                 let mut s = String::new();
                 if !store.sheets.is_empty() {
-                    s.push_str("Property store data block (Format: GUID\\ID Description ==> Value)\n");
+                    s.push_str("Property store data block (Format: GUID\\ID Description ==> Value)\r\n");
                     let mut count = 0;
                     for sheet in &store.sheets {
                         for (key, value) in &sheet.property_names {
@@ -432,11 +432,11 @@ impl ExtraBlock {
                                 Ok(k) => description_from_guid_and_key(&sheet.guid, k),
                                 Err(_) => key.clone(),
                             };
-                            s.push_str(&format!("{prefix} {} ==> {value}\n", pad_right(&name, 35)));
+                            s.push_str(&format!("{prefix} {} ==> {value}\r\n", pad_right(&name, 35)));
                         }
                     }
                     if count == 0 {
-                        s.push_str("(Property store is empty)\n");
+                        s.push_str("(Property store is empty)\r\n");
                     }
                 }
                 s
@@ -445,13 +445,13 @@ impl ExtraBlock {
             ExtraBlock::SpecialFolder { id, .. } => format!("Special folder data block\r\nSpecialFolderID: {id}"),
             ExtraBlock::Tracker(t) => format!(
                 "Tracker database block\r\nMachine ID: {}\r\nMac Address: {}\r\nCreation: {}\r\nVolume Droid: {}\r\nVolume Droid Birth: {}\r\nFile Droid: {}\r\nFile Droid birth: {}",
-                t.machine_id, t.mac_address, t.creation_time.format("M/d/yyyy h:mm:ss\u{202f}tt K"), t.volume_droid, t.volume_droid_birth, t.file_droid, t.file_droid_birth
+                t.machine_id, t.mac_address, t.creation_time.format("M/d/yyyy h:mm:ss tt K"), t.volume_droid, t.volume_droid_birth, t.file_droid, t.file_droid_birth
             ),
             ExtraBlock::VistaAndAboveIdList { target_ids, .. } => {
-                let mut s = "Vista and above ID List data block\n".to_string();
+                let mut s = "Vista and above ID List data block\r\n".to_string();
                 for item in target_ids {
                     s.push_str(&item.to_text());
-                    s.push('\n');
+                    s.push_str("\r\n");
                 }
                 s
             }

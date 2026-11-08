@@ -7,6 +7,7 @@
 # (cargo build --release). EvtxECmd runs with `dotnet`; its own Maps and these must be the same. Outputs that match are
 # deleted right away; those that differ are kept.
 set -euo pipefail
+. "$(dirname "$0")/platform.sh"
 
 dll=$1 maps=$2 logs=$3
 work=${4:-$(mktemp -d)}
@@ -25,7 +26,7 @@ while IFS= read -r -d '' f; do
         if [ ! -e "$work/ref/$n.$ext" ] && [ ! -e "$work/ours/$n.$ext" ]; then
             continue
         fi
-        if cmp -s "$work/ref/$n.$ext" "$work/ours/$n.$ext"; then
+        if cmp -s <(platform "$work/ref/$n.$ext") <(platform "$work/ours/$n.$ext"); then
             same=$((same + 1))
             rm -f "$work/ref/$n.$ext" "$work/ours/$n.$ext"
         else

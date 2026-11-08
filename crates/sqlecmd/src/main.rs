@@ -591,7 +591,8 @@ fn write_json(table: &Table, out: &mut BufWriter<File>) -> std::io::Result<()> {
             line.push(':');
             value.write_json(&mut line);
         }
-        line.push_str("}\n");
+        line.push('}');
+        line.push_str(ez_common::dotnet::NEW_LINE);
         out.write_all(line.as_bytes())?;
     }
     out.flush()

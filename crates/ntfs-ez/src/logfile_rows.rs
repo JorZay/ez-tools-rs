@@ -518,5 +518,5 @@ pub fn write_json(out: &mut String, r: &LogFileRow) {
     num(&mut j, "UndoLength", r.undo_length.map(|v| v.to_string()));
     j.bool("Truncated", r.truncated).number("FileOffset", r.file_offset).string("SourceFile", Some(&r.source_file));
     out.push_str(&j.finish());
-    out.push('\n');
+    out.push_str(ez_common::dotnet::NEW_LINE);
 }

@@ -19,17 +19,17 @@ The other comparisons run the originals' Linux builds. On 2026-11-08 every port 
 
 | Tool | Runs | Result |
 |---|---|---|
-| AmcacheParser | `Amcache.hve -i`; one of the 25H2 `Inventory*.db` databases | Identical (58 files) |
+| AmcacheParser | `Amcache.hve -i`; one of the 25H2 `Inventory*.db` databases | Identical |
 | AppCompatCacheParser | SYSTEM | Identical |
-| EvtxECmd | 213 logs, CSV and JSON | CSV identical (98,041 lines); JSON: line breaks (below) |
-| JLECmd | Jump lists: CSV, JSON, `--fd` | Identical (26 files) |
-| LECmd | LNK files: CSV, JSON, XML, `--all` | Identical but for JSON line breaks (below) |
-| PECmd | 437 prefetch files: CSV, time line, JSON | Identical but for JSON line breaks (below) |
+| EvtxECmd | 213 logs: CSV, JSON; `--fj` | Identical (104,440 records) |
+| JLECmd | Jump lists: CSV, JSON, `--pretty`, `--html`, `--fd` | Identical |
+| LECmd | LNK files: CSV, JSON, `--pretty`, XML, `--html`, `--all`; a link with CR, LF and CRLF in its values | Identical |
+| PECmd | 437 prefetch files: CSV, time line, JSON, `--html` | Identical |
 | RBCmd | The VM's Recycle Bin | Identical; it held no deleted files |
-| RECmd | `-d` with DFIRBatch and Kroll_Batch on the VM and the extractions; SIDs with `BinaryConvert: SID` | SIDs identical; the rest differs by AM/PM and line breaks only (below) |
+| RECmd | `-d` with DFIRBatch and Kroll_Batch, CSV and JSON, on the VM and the extractions; SIDs with `BinaryConvert: SID`; `--kn` with `--json`, also of a key named with `"<>\|:*?%` and a tab | Identical |
 | rla | `-d` on the VM and on 122 hives of the extractions | Identical, every saved hive |
-| SQLECmd | `-d` on the VM | Identical but for the known order of Favicons rows with equal keys (`docs/plans/sqlecmd.md`) |
-| SrumECmd | `-f`, `-r`, `-d`, `--dt` (`docs/plans/srumecmd.md`, `docs/cli-options.md`) | Identical but for AM/PM (below) |
+| SQLECmd | `-d` on the VM, CSV and JSON | Identical but for the known order of Favicons rows with equal keys (`docs/plans/sqlecmd.md`) |
+| SrumECmd | `-f`, `-r`, `-d`, `--dt` (`docs/plans/srumecmd.md`, `docs/cli-options.md`) | Identical |
 
 MFTECmd wasn't run: the NTFS metadata files can't be copied from a running Windows as files.
 
@@ -40,13 +40,25 @@ MFTECmd wasn't run: the NTFS metadata files can't be copied from a running Windo
   They now sort each folder as NTFS does (`ez_common::cli::read_dir_ntfs_order`): PECmd, LECmd, JLECmd, SQLECmd, RBCmd (also the files
   of a deleted folder), RECmd, rla and SrumECmd. The Linux originals can now list the same files in another order than the ports.
 - **SrumECmd** on 25H2 databases and with a bad `--dt` (`docs/plans/srumecmd.md`, `docs/cli-options.md`).
+- **.NET's Windows rules**, below.
 
-## What differs on Windows, and not on Linux
+## Where .NET on Windows differs from .NET on Linux
 
-Two things where .NET itself behaves differently on Windows. The ports follow the Linux originals in both:
+The ports write what the originals write on Windows, where they are meant to run. The Linux builds of the originals differ from that
+in these, all .NET's own and none the tools' (a probe program built for both showed which culture rules differ; sorting and case
+mapping don't):
 
-- **AM and PM.** A standard date format (`G`, `t`, the default `ToString()` of a date in RECmd's plugins...) has a space before AM and
-  PM on Windows, where .NET takes its culture data from Windows; ICU, which .NET uses on Linux, has U+202F (narrow no-break space).
-- **Line breaks in values.** `Environment.NewLine` is `\r\n` on Windows and `\n` on Linux. It shows inside values the originals build line
-  by line (RECmd's plugin details, LastVisitedPidlMRU and OpenSavePidlMRU), and between records of the JSON files of EvtxECmd, LECmd and
-  PECmd.
+- **AM and PM.** A standard date format (`G`, `g`, `f`, `F`, `t`, `T`, an empty one, the default `ToString()` of a date in RECmd's
+  plugins...) has a plain space before AM and PM on Windows. ICU, which .NET uses on Linux, has U+202F (narrow no-break space).
+- **N and P.** Without a precision, these have 2 decimals on Windows and 3 on Linux. Only a console message uses one.
+- **`Environment.NewLine`** is `\r\n` on Windows and `\n` on Linux. It ends each record of the JSON files (`TextWriter.WriteLine`: EvtxECmd,
+  LECmd, PECmd, RECmd, SQLECmd, MFTECmd), each line of ServiceStack's `Dump()` (`--pretty`), each line of the `--html` reports
+  (`XmlTextWriter`'s indenting) and each line break in a value of LECmd's `--xml` (`XmlWriter` writes them as `NewLineChars`), and the
+  lines of text the libraries build with `AppendLine`, such as shell items' details in RECmd's plugins (`ez_common::dotnet::NEW_LINE`).
+- **Text resources** are built into the originals as they are in the checkout, which has CRLF on Windows: the styles of LECmd's and
+  JLECmd's `--html` reports, and the MAC vendor and AppID lists, which LECmd and JLECmd split on `Environment.NewLine`.
+- **Invalid file name characters.** RECmd's `--kn` names its JSON file after the key, replacing `Path.GetInvalidFileNameChars`: on
+  Windows `"<>|:*?\/`, NUL and the control characters; on Linux `/` and NUL.
+
+The Linux parity scripts in `tools` compare the ports with the Linux builds, so they make both sides the same in the first and third
+before comparing (`tools/platform.sh`); the comparison here, on Windows, is exact.

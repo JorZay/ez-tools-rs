@@ -75,7 +75,7 @@ fn every_output() {
     assert_eq!(std::fs::read_dir(case.dir.join("x")).unwrap().count(), 2);
     let html = only_file(&case.dir.join("h"));
     assert!(html.to_string_lossy().contains("_LECmd_Output_for_"));
-    assert!(std::fs::read_to_string(html.join("index.xhtml")).unwrap().starts_with("\u{feff}<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<?xml-stylesheet href=\"normalize.css\"?>"));
+    assert!(std::fs::read_to_string(html.join("index.xhtml")).unwrap().starts_with("\u{feff}<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<?xml-stylesheet href=\"normalize.css\"?>"));
     // the styles have no byte order mark
     assert_eq!(std::fs::read(html.join("style.css")).unwrap()[0], b'/');
 }

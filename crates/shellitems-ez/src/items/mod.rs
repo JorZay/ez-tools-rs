@@ -192,18 +192,18 @@ impl ShellItem {
 
     /// base.ToString()
     fn base_text(&self) -> String {
-        let mut s = format!("Value: {}\nShell Type: {}\n\n", self.value, self.friendly_name);
+        let mut s = format!("Value: {}\r\nShell Type: {}\r\n\r\n", self.value, self.friendly_name);
         if !self.extension_blocks.is_empty() {
-            s.push_str(&format!("\nExtension blocks found: {}\n", self.extension_blocks.len()));
+            s.push_str(&format!("\r\nExtension blocks found: {}\r\n", self.extension_blocks.len()));
             let mut number = 0i64;
             for block in &self.extension_blocks {
                 if block.is_place_holder() {
                     continue;
                 }
-                s.push_str(&format!("---------------------- Block {} ----------------------\n{}\n", n0(number), block.to_text()));
+                s.push_str(&format!("---------------------- Block {} ----------------------\r\n{}\r\n", n0(number), block.to_text()));
                 number += 1;
             }
-            s.push_str("--------------------------------------------------\n");
+            s.push_str("--------------------------------------------------\r\n");
         }
         s
     }
@@ -212,7 +212,7 @@ impl ShellItem {
     pub fn to_text(&self) -> String {
         if self.own_text {
             return format!(
-                "Value: {}\nShell Type: {}\n\nAbsolute path: \nBagPath: \nSlot #: -1\nNode Slot: 0\nMRU Position: -1\n\n# ChildBags: 0\n\nHex Value: {}\n",
+                "Value: {}\r\nShell Type: {}\r\n\r\nAbsolute path: \r\nBagPath: \r\nSlot #: -1\r\nNode Slot: 0\r\nMRU Position: -1\r\n\r\n# ChildBags: 0\r\n\r\nHex Value: {}\r\n",
                 self.value,
                 self.friendly_name,
                 hex(&self.raw)
@@ -228,12 +228,12 @@ impl ShellItem {
                 Part::Store(heading, store) => {
                     s.push_str(heading);
                     s.push_str(&store.to_text());
-                    s.push('\n');
+                    s.push_str("\r\n");
                 }
             }
         }
         s.push_str(&self.base_text());
-        s.push('\n');
+        s.push_str("\r\n");
         s.push_str(&self.after);
         s
     }
@@ -530,6 +530,6 @@ pub fn create_with_code_page(raw: &[u8], code_page: i32) -> NetResult<ShellItem>
 
 /// The time text most classes use, to keep them short
 pub(crate) fn time_line(label: &str, time: Option<Timestamp>) -> String {
-    time.map(|t| format!("{label}: {}\n", time_text(t))).unwrap_or_default()
+    time.map(|t| format!("{label}: {}\r\n", time_text(t))).unwrap_or_default()
 }
 

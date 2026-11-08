@@ -5,6 +5,15 @@ use icu_collator::{Collator, CollatorBorrowed};
 use std::sync::LazyLock;
 use std::fmt::Write;
 
+/// Environment.NewLine as on Windows, where the original tools run: what StringBuilder.AppendLine, TextWriter.WriteLine and
+/// ServiceStack's Dump() put at the end of a line. (On Linux .NET has `\n`.)
+pub const NEW_LINE: &str = "\r\n";
+
+/// A text resource as the original has it on Windows, built from a checkout with CRLF line ends: each line ending with CRLF
+pub fn crlf_lines(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\n', NEW_LINE)
+}
+
 /// A double as .NET (Core 3.0 and later) writes it with the invariant culture: the shortest text that reads back
 /// as the same value, in scientific notation (`1E+15`) when the exponent is 15 or more or -5 or less
 pub fn dotnet_f64(v: f64) -> String {
