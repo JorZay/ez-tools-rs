@@ -1,0 +1,14 @@
+[package]
+name = "activitiescache-ez"
+description = "Reads the Windows Timeline database (ActivitiesCache.db), as WxTCmd does"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ez-common = { version = "0.1.0", path = "../ez-common" }
+guidmapping-ez = { version = "0.1.0", path = "../guidmapping-ez" }
+icu_properties = "2.4"
+rusqlite = { version = "0.40.2", features = ["bundled"] }

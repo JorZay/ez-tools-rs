@@ -18,6 +18,7 @@ Each tool is a library (which never prints or exits, so other programs can use i
 | [RBCmd](https://github.com/EricZimmerman/RBCmd) → `rbcmd` | Done (`docs/plans/rbcmd.md`) |
 | [SrumECmd](https://github.com/EricZimmerman/Srum) → `srumecmd` | Done, identical to the original run on Windows (`docs/plans/srumecmd.md`) |
 | [RecentFileCacheParser](https://github.com/EricZimmerman/RecentFileCacheParser) → `recentfilecacheparser` | Done (`docs/plans/recentfilecacheparser.md`) |
+| [WxTCmd](https://github.com/EricZimmerman/WxTCmd) → `wxtcmd` | Done, identical to the original on Linux and Windows (`docs/plans/wxtcmd.md`) |
 
 The upstream commits each port was built from are in `docs/upstream.md`. How the ports compare with the originals running on Windows is in `docs/windows-checks.md`.
 
@@ -297,3 +298,16 @@ cargo build --release -p recentfilecacheparser
 recentfilecacheparser -f /cases/host1/RecentFileCache.bcf --csv /tmp/out
 recentfilecacheparser -f /cases/host1/RecentFileCache.bcf --json /tmp/out --pretty
 ```
+
+## wxtcmd
+
+A port of WxTCmd: the Windows 10/11 Timeline database (`ActivitiesCache.db`) to CSV: the Activity, ActivityOperation and Activity_PackageId
+tables, with the executable, display text, content URI and clipboard text taken from their JSON. The database (with its `-wal` and `-journal`)
+is copied to a temporary folder (`--temp`, or `Temp` next to the program) and only the copy is opened.
+
+```
+cargo build --release -p wxtcmd
+wxtcmd -f /cases/host1/C/Users/jane/AppData/Local/ConnectedDevicesPlatform/L.jane/ActivitiesCache.db --csv /tmp/out
+```
+
+`tools/parity-wxtcmd.sh` compares with the original, `tools/gen-wxtcmd-dbs.py` makes the edge case databases; `docs/plans/wxtcmd.md` lists the quirks kept.

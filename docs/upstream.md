@@ -18,6 +18,7 @@ port is brought up to date.
 | `rbcmd`, `recyclebin-ez` | EricZimmerman/RBCmd | `f2ed07ab4634064e7dbc02a1155fd70b7ff3f51b` | 2026-10-25 | 2026.10.1 | Exact |
 | `srumecmd`, `srum-ez` | EricZimmerman/Srum | `6dbb636b4fe734874c3439e1f0db5cb7dce618ab` | 2026-10-25 | 2026.10.1 | Exact |
 | `recentfilecacheparser`, `recentfilecache-ez` | EricZimmerman/RecentFileCacheParser | `f953a6028c09a57006be1fec365a69cda7c87acf` | 2026-10-25 | 2026.10.2 | Exact |
+| `wxtcmd`, `activitiescache-ez` | EricZimmerman/WxTCmd | `5677ea8a6e38e9d9f66970e90b5fb509bdfe06be` | 2026-10-25 | 2026.10.1 (GuidMapping 2026.10.2, Microsoft.Data.Sqlite 10.0.13, SQLite 3.53.3) | Exact |
 | `lnk-ez` | EricZimmerman/Lnk | `dab1c8ab9c1c18d2cf89a4938ab95794d17d3a44` | | 2026.10.11 | Exact |
 | `shellitems-ez` | EricZimmerman/ExtensionBlocks | `897bbe3` (not HEAD) | | 2026.10.9 | Exact |
 | `recmd` | EricZimmerman/RECmd | `8d1955910964209500b6f74f169e3e52554838d7` | | 2026.10.3 | Exact |
