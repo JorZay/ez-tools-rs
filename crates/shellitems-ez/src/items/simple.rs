@@ -1,6 +1,5 @@
 //! The shell item classes with little of their own.
 
-use ez_common::Timestamp;
 use ez_common::json::Value;
 use ez_common::net::{NetResult, byte_at, copy, i16_at, i64_at, u32_at, unicode_string};
 
