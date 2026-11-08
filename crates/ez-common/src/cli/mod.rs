@@ -76,6 +76,14 @@ pub fn parse_args<T: clap::Parser>() -> Result<T, std::process::ExitCode> {
     })
 }
 
+/// A folder's entries in the order NTFS lists them, which is the order the originals meet files in on Windows: by name,
+/// upper-cased, compared by UTF-16 code unit. The file system's own order is kept for names that are equal so
+pub fn read_dir_ntfs_order(dir: &Path) -> io::Result<Vec<std::fs::DirEntry>> {
+    let mut entries: Vec<std::fs::DirEntry> = std::fs::read_dir(dir)?.flatten().collect();
+    entries.sort_by_cached_key(|e| crate::dotnet::upper_invariant(&e.file_name().to_string_lossy()).encode_utf16().collect::<Vec<u16>>());
+    Ok(entries)
+}
+
 /// UTF-8's byte order mark, which EZ tools write at the start of their CSV and JSON files
 pub const BOM: &[u8] = "\u{FEFF}".as_bytes();
 

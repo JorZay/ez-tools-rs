@@ -875,7 +875,7 @@ fn find_lnk_files(directory: &str, mask: &str) -> (Vec<String>, Vec<(String, Str
     let mut queue = VecDeque::from([root]);
     let (mut files, mut unreadable) = (Vec::new(), Vec::new());
     while let Some(folder) = queue.pop_front() {
-        let entries = match std::fs::read_dir(&folder) {
+        let entries = match ez_common::cli::read_dir_ntfs_order(std::path::Path::new(&folder)) {
             Ok(e) => e,
             Err(e) => {
                 let text = e.to_string();
@@ -884,7 +884,7 @@ fn find_lnk_files(directory: &str, mask: &str) -> (Vec<String>, Vec<(String, Str
                 continue;
             }
         };
-        for entry in entries.flatten() {
+        for entry in entries {
             let path = entry.path();
             let text = path.to_string_lossy().into_owned();
             let is_link = entry.file_type().is_ok_and(|t| t.is_symlink());

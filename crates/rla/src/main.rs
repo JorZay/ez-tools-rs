@@ -122,21 +122,21 @@ fn looks_like_hive(path: &Path, name: &str, log: &mut Logger) -> bool {
     }
 }
 
-/// The hives in a folder and its subfolders: each folder's files in the order the file system gives them, subfolders
+/// The hives in a folder and its subfolders: each folder's files in NTFS order, as on Windows, subfolders
 /// after. Symbolic links to folders aren't followed. Folders that can't be read are logged and returned as a count
 fn find_hives(d: &str, log: &mut Logger) -> (Vec<String>, usize) {
     let mut found = Vec::new();
     let mut unreadable = Vec::new();
     let mut pending = VecDeque::from([Path::new(&full_path(d)).to_path_buf()]);
     while let Some(dir) = pending.pop_front() {
-        let entries = match std::fs::read_dir(&dir) {
+        let entries = match ez_common::cli::read_dir_ntfs_order(&dir) {
             Ok(e) => e,
             Err(e) => {
                 unreadable.push((dir, e));
                 continue;
             }
         };
-        for entry in entries.flatten() {
+        for entry in entries {
             let Ok(file_type) = entry.file_type() else { continue };
             let path = entry.path();
             if file_type.is_dir() {

@@ -454,22 +454,22 @@ fn has_hive_signature(path: &Path) -> bool {
 }
 
 /// The hives in the folder and its subfolders, as the original's Windows build finds them: names holding one of
-/// NAME_PARTS, 4 bytes or more, without an ignored extension, with a hive's signature. Each folder's entries are in the
-/// order the file system gives them, subfolders after. Links to folders aren't followed
+/// NAME_PARTS, 4 bytes or more, without an ignored extension, with a hive's signature. Each folder's entries are in NTFS
+/// order, as on Windows, subfolders after. Links to folders aren't followed
 fn find_hives(d: &str, log: &mut Logger, errors: &mut u32) -> Vec<String> {
     let root = full_path(d);
     let mut found = Vec::new();
     let mut pending = VecDeque::from([root]);
     let mut unreadable = Vec::new();
     while let Some(dir) = pending.pop_front() {
-        let entries = match std::fs::read_dir(&dir) {
+        let entries = match ez_common::cli::read_dir_ntfs_order(&dir) {
             Ok(e) => e,
             Err(e) => {
                 unreadable.push((dir.clone(), io_reason(&e)));
                 continue;
             }
         };
-        for entry in entries.flatten() {
+        for entry in entries {
             let Ok(ft) = entry.file_type() else { continue };
             let path = entry.path();
             if ft.is_dir() {

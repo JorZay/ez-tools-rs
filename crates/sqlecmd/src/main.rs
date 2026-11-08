@@ -175,8 +175,8 @@ struct Unreadable {
     reason: String,
 }
 
-/// EntryFinder: the files under a folder matching a pattern, in the order .NET's enumerator gives them: a folder's entries,
-/// then its subfolders in turn
+/// EntryFinder: the files under a folder matching a pattern, in the order .NET's enumerator gives them on Windows: a
+/// folder's entries in NTFS order, then its subfolders in turn
 fn find_entries(directory: &str, pattern: &str) -> (Vec<String>, Vec<Unreadable>) {
     let root = full_path(directory);
     let root = if root.len() > 1 { root.trim_end_matches('/').to_string() } else { root };
@@ -184,14 +184,14 @@ fn find_entries(directory: &str, pattern: &str) -> (Vec<String>, Vec<Unreadable>
     let mut files = Vec::new();
     let mut unreadable = Vec::new();
     while let Some(folder) = queue.pop_front() {
-        let entries = match std::fs::read_dir(&folder) {
+        let entries = match ez_common::cli::read_dir_ntfs_order(std::path::Path::new(&folder)) {
             Ok(e) => e,
             Err(e) => {
                 unreadable.push(Unreadable { folder, reason: os_reason(&e) });
                 continue;
             }
         };
-        for entry in entries.flatten() {
+        for entry in entries {
             let path = entry.path();
             let text = path.to_string_lossy().into_owned();
             if std::fs::metadata(&path).is_ok_and(|m| m.is_dir()) {

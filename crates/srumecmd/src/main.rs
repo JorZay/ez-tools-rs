@@ -72,7 +72,7 @@ fn find_first(directory: &str, wanted: &str) -> (Option<String>, Vec<(String, St
     let mut queue = VecDeque::from([directory.to_string()]);
     let mut unreadable = Vec::new();
     while let Some(folder) = queue.pop_front() {
-        let entries = match std::fs::read_dir(&folder) {
+        let entries = match ez_common::cli::read_dir_ntfs_order(Path::new(&folder)) {
             Ok(e) => e,
             Err(e) => {
                 let text = e.to_string();
@@ -81,9 +81,7 @@ fn find_first(directory: &str, wanted: &str) -> (Option<String>, Vec<(String, St
                 continue;
             }
         };
-        let mut names: Vec<_> = entries.flatten().collect();
-        names.sort_by_cached_key(|e| upper_invariant(&e.file_name().to_string_lossy()));
-        for entry in names {
+        for entry in entries {
             let path = entry.path();
             let Ok(kind) = entry.file_type() else { continue };
             if kind.is_dir() {

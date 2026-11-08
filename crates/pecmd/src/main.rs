@@ -434,14 +434,14 @@ fn save_prefetch(o: &str, pf: &Prefetch, log: &mut Logger) -> Result<(), String>
     Ok(())
 }
 
-/// The entries under a folder whose names end in .pf (folders too, as the original finds them), each folder's in the
-/// order the file system gives them, subfolders after. The paths start with the folder as it was given.
+/// The entries under a folder whose names end in .pf (folders too, as the original finds them), each folder's in NTFS
+/// order, as on Windows, subfolders after. The paths start with the folder as it was given.
 fn find_entries(directory: &str, log: &mut Logger, read_errors: &mut u32) -> Vec<String> {
     let mut found = Vec::new();
     let mut pending = std::collections::VecDeque::from([directory.to_string()]);
     let mut unreadable = Vec::new();
     while let Some(folder) = pending.pop_front() {
-        let entries = match std::fs::read_dir(&folder) {
+        let entries = match ez_common::cli::read_dir_ntfs_order(std::path::Path::new(&folder)) {
             Ok(e) => e,
             Err(e) => {
                 let reason = if e.kind() == std::io::ErrorKind::PermissionDenied { "Permission denied".to_string() } else { e.to_string() };
@@ -449,7 +449,7 @@ fn find_entries(directory: &str, log: &mut Logger, read_errors: &mut u32) -> Vec
                 continue;
             }
         };
-        for entry in entries.flatten() {
+        for entry in entries {
             let name = entry.file_name().to_string_lossy().into_owned();
             let path = if folder.ends_with('/') { format!("{folder}{name}") } else { format!("{folder}/{name}") };
             // a link to a folder is followed, as .NET does

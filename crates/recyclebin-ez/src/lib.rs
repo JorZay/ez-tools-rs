@@ -164,16 +164,15 @@ fn error_text(path: &Path, e: &io::Error) -> String {
     text.rfind(" (os error").map_or_else(|| text.clone(), |end| text[..end].to_string())
 }
 
-/// Directory.GetFiles(folder, "*", AllDirectories): each folder's files in the order the file system gives them, then the
+/// Directory.GetFiles(folder, "*", AllDirectories): each folder's files in NTFS order, as on Windows, then the
 /// folders found, in turn. Links to folders are followed, and a link's size is its own. All or nothing, as a failure there
 /// is an exception. Paths are relative, with `\`
 fn list_files(root: &Path) -> Result<Vec<(String, i64)>, (PathBuf, io::Error)> {
     let mut queue = VecDeque::from([(root.to_path_buf(), String::new())]);
     let mut files = Vec::new();
     while let Some((folder, relative)) = queue.pop_front() {
-        let entries = std::fs::read_dir(&folder).map_err(|e| (folder.clone(), e))?;
+        let entries = ez_common::cli::read_dir_ntfs_order(&folder).map_err(|e| (folder.clone(), e))?;
         for entry in entries {
-            let entry = entry.map_err(|e| (folder.clone(), e))?;
             let path = entry.path();
             let child = format!("{relative}\\{}", entry.file_name().to_string_lossy());
             if std::fs::metadata(&path).is_ok_and(|m| m.is_dir()) {

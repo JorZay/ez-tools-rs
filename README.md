@@ -18,7 +18,7 @@ Each tool is a library (which never prints or exits, so other programs can use i
 | [RBCmd](https://github.com/EricZimmerman/RBCmd) → `rbcmd` | Done (`docs/plans/rbcmd.md`) |
 | [SrumECmd](https://github.com/EricZimmerman/Srum) → `srumecmd` | Done, identical to the original run on Windows (`docs/plans/srumecmd.md`) |
 
-The upstream commits each port was built from are in `docs/upstream.md`.
+The upstream commits each port was built from are in `docs/upstream.md`. How the ports compare with the originals running on Windows is in `docs/windows-checks.md`.
 
 ## pecmd
 

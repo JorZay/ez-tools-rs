@@ -282,8 +282,8 @@ fn bytes_to_string(count: i64) -> Result<String, String> {
     Ok(format!("{}{}", count.signum() as f64 * num, SUFFIXES[place as usize]))
 }
 
-/// GetRecycleBinFiles: `$I*` and INFO2 files (case-sensitive) under a folder, the folder's entries in the order the file
-/// system gives them, then the folders found, in turn; the `$I` files come before the INFO2 files. Links to folders aren't
+/// GetRecycleBinFiles: `$I*` and INFO2 files (case-sensitive) under a folder, the folder's entries in NTFS order, as on
+/// Windows, then the folders found, in turn; the `$I` files come before the INFO2 files. Links to folders aren't
 /// followed. Also the folders that couldn't be read
 fn recycle_bin_files(given: &str) -> (Vec<String>, Vec<(String, String)>) {
     let full = full_path(given);
@@ -291,7 +291,7 @@ fn recycle_bin_files(given: &str) -> (Vec<String>, Vec<(String, String)>) {
     let mut queue = VecDeque::from([root.clone()]);
     let (mut files, mut infos, mut unreadable) = (Vec::new(), Vec::new(), Vec::new());
     while let Some(folder) = queue.pop_front() {
-        let entries = match std::fs::read_dir(&folder) {
+        let entries = match ez_common::cli::read_dir_ntfs_order(std::path::Path::new(&folder)) {
             Ok(entries) => entries,
             Err(e) => {
                 let text = e.to_string();
@@ -300,7 +300,7 @@ fn recycle_bin_files(given: &str) -> (Vec<String>, Vec<(String, String)>) {
                 continue;
             }
         };
-        for entry in entries.flatten() {
+        for entry in entries {
             let path = entry.path();
             let text = path.to_string_lossy().into_owned();
             if std::fs::metadata(&path).is_ok_and(|m| m.is_dir()) {
