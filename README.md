@@ -17,6 +17,7 @@ Each tool is a library (which never prints or exits, so other programs can use i
 | [JLECmd](https://github.com/EricZimmerman/JLECmd) → `jlecmd` | Done (`docs/plans/jlecmd.md`) |
 | [RBCmd](https://github.com/EricZimmerman/RBCmd) → `rbcmd` | Done (`docs/plans/rbcmd.md`) |
 | [SrumECmd](https://github.com/EricZimmerman/Srum) → `srumecmd` | Done, identical to the original run on Windows (`docs/plans/srumecmd.md`) |
+| [RecentFileCacheParser](https://github.com/EricZimmerman/RecentFileCacheParser) → `recentfilecacheparser` | Done (`docs/plans/recentfilecacheparser.md`) |
 
 The upstream commits each port was built from are in `docs/upstream.md`. How the ports compare with the originals running on Windows is in `docs/windows-checks.md`.
 
@@ -284,3 +285,15 @@ srumecmd -d /cases/host1 --csv /tmp/out
 
 Transaction logs aren't replayed: a database that wasn't shut down cleanly is read as it is, with a warning. The original only runs on Windows; it was compared there with
 this port, with identical CSVs (`docs/plans/srumecmd.md`).
+
+## recentfilecacheparser
+
+A port of RecentFileCacheParser: `RecentFileCache.bcf` (Windows 7 and Server 2008 R2, the programs run, in `C:\Windows\AppCompat\Programs`) to the
+console, CSV and JSON, with its checksum checked and damaged entries reported. `tools/parity-recentfilecache.sh` compares with the original;
+`docs/plans/recentfilecacheparser.md` lists what was compared.
+
+```
+cargo build --release -p recentfilecacheparser
+recentfilecacheparser -f /cases/host1/RecentFileCache.bcf --csv /tmp/out
+recentfilecacheparser -f /cases/host1/RecentFileCache.bcf --json /tmp/out --pretty
+```

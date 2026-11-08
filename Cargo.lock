@@ -1053,6 +1053,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "recentfilecache-ez"
+version = "0.1.0"
+dependencies = [
+ "ez-common",
+]
+
+[[package]]
+name = "recentfilecacheparser"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "ez-common",
+ "recentfilecache-ez",
+]
+
+[[package]]
 name = "recmd"
 version = "0.1.0"
 dependencies = [

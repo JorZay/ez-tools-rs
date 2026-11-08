@@ -1,0 +1,11 @@
+[package]
+name = "recentfilecache-ez"
+description = "Parses RecentFileCache.bcf (Windows 7 and Server 2008 R2 program execution)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ez-common = { version = "0.1.0", path = "../ez-common" }

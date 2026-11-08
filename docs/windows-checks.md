@@ -30,6 +30,7 @@ The other comparisons run the originals' Linux builds. On 2026-11-08 every port 
 | rla | `-d` on the VM and on 122 hives of the extractions | Identical, every saved hive |
 | SQLECmd | `-d` on the VM, CSV and JSON | Identical but for the known order of Favicons rows with equal keys (`docs/plans/sqlecmd.md`) |
 | SrumECmd | `-f`, `-r`, `-d`, `--dt` (`docs/plans/srumecmd.md`, `docs/cli-options.md`) | Identical |
+| RecentFileCacheParser | Generated and damaged files, upstream's samples: CSV, JSON, `--pretty`, options (`docs/plans/recentfilecacheparser.md`) | Identical (576 runs) |
 
 MFTECmd wasn't run: the NTFS metadata files can't be copied from a running Windows as files.
 
