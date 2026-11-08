@@ -20,7 +20,6 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[derive(Parser, Debug)]
 #[command(
     version,
-    args_override_self = true,
     after_help = "Examples:\n  srumecmd -f /tmp/SRUDB.dat -r /tmp/SOFTWARE --csv /tmp/out\n  srumecmd -f /tmp/SRUDB.dat --csv /tmp/out\n  srumecmd -d /cases/host1 --csv /tmp/out"
 )]
 struct Args {
@@ -123,16 +122,32 @@ fn csv_line(fields: impl Iterator<Item = String>) -> String {
     line
 }
 
+/// Why an export failed
+enum ExportError {
+    Io(std::io::Error),
+    /// --dt is a format .NET rejects: CsvHelper stopped at the first date, as here
+    BadDate,
+}
+
 /// ExportCsv: one CSV, with a byte order mark
-fn export(sheet: &Sheet, folder: &str, stamp: &str, format: &str) -> std::io::Result<()> {
+fn export(sheet: &Sheet, folder: &str, stamp: &str, format: &str) -> Result<(), ExportError> {
     let path = Path::new(folder).join(format!("{stamp}_SrumECmd_{}_Output.csv", sheet.name));
-    let mut out = std::io::BufWriter::new(std::fs::File::create(path)?);
-    out.write_all(ez_common::cli::BOM)?;
-    out.write_all(csv_line(sheet.columns.iter().map(|c| (*c).to_string())).as_bytes())?;
+    let mut out = std::io::BufWriter::new(std::fs::File::create(path).map_err(ExportError::Io)?);
+    out.write_all(ez_common::cli::BOM).map_err(ExportError::Io)?;
+    out.write_all(csv_line(sheet.columns.iter().map(|c| (*c).to_string())).as_bytes()).map_err(ExportError::Io)?;
+    let bad = Timestamp::check_format(format).is_err();
+    let format = if bad { ez_common::csv::BAD_DATE } else { format };
     for row in &sheet.rows {
-        out.write_all(csv_line(row.iter().map(|c| cell_text(c, format))).as_bytes())?;
+        let mut line = csv_line(row.iter().map(|c| cell_text(c, format)));
+        if bad && line.contains(ez_common::csv::BAD_DATE) {
+            ez_common::csv::cut_at_bad_date(&mut line);
+            out.write_all(line.as_bytes()).map_err(ExportError::Io)?;
+            out.flush().map_err(ExportError::Io)?;
+            return Err(ExportError::BadDate);
+        }
+        out.write_all(line.as_bytes()).map_err(ExportError::Io)?;
     }
-    out.flush()
+    out.flush().map_err(ExportError::Io)
 }
 
 struct LogObserver<'a>(&'a mut Logger);
@@ -156,12 +171,9 @@ fn file_exists(path: &str) -> bool {
 }
 
 fn main() -> ExitCode {
-    let args = match Args::try_parse() {
+    let args = match ez_common::cli::parse_args::<Args>() {
         Ok(a) => a,
-        Err(e) => {
-            let _ = e.print();
-            return if e.use_stderr() { ExitCode::FAILURE } else { ExitCode::SUCCESS };
-        }
+        Err(code) => return code,
     };
     let level = if args.trace {
         Level::Trace
@@ -311,10 +323,17 @@ fn main() -> ExitCode {
             continue;
         }
         log.debug(&format!("Dumping {} table '{}'", sheet.name, sheet.table_name));
-        if let Err(e) = export(sheet, csv, &stamp, &args.dt) {
-            export_failed = true;
-            let message = io_message(Path::new(csv), &e);
-            log.block(Level::Error, &format!("Error exporting '{}' data! Error: {message}\n{}: {message}", sheet.name, io_exception(&e)));
+        match export(sheet, csv, &stamp, &args.dt) {
+            Ok(()) => {}
+            Err(ExportError::Io(e)) => {
+                export_failed = true;
+                let message = io_message(Path::new(csv), &e);
+                log.block(Level::Error, &format!("Error exporting '{}' data! Error: {message}\n{}: {message}", sheet.name, io_exception(&e)));
+            }
+            Err(ExportError::BadDate) => {
+                export_failed = true;
+                log.block(Level::Error, &format!("Error exporting '{}' data! Error: {}\nInput string was not in a correct format: --dt '{}'", sheet.name, ez_common::csv::WRITER_ERROR, args.dt));
+            }
         }
     }
 

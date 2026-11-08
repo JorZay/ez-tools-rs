@@ -24,6 +24,7 @@ How `--dt` and the command line itself behave in all the ports, compared with th
 | RECmd | Batch CSV empty; plugin files complete, as they use no `--dt` | 1 |
 | MFTECmd `$MFT` | CSV with only its header | 1 |
 | MFTECmd `$J`, `$LogFile` | Header, whole rows, and the first row with a date cut before that date | 1 |
+| SrumECmd | Each CSV: header, whole rows, and the first row with a date cut before that date | 1 |
 
 The ports leave the same files. The original also loses every console and log line with a date, as Serilog swallows the error; the ports keep those lines.
 
@@ -46,6 +47,11 @@ The other 21 are known:
 
 - `mftecmd --vss` (3): the Linux original stops with `COM is not supported`; the port ignores it and goes on.
 - `evtxecmd` (18): the port's command line is its own by design. It takes several `-f` and `-d`, and has no `--met`, `--vss`, `--dedupe` or `--co`.
+
+SrumECmd's original only runs on Windows: its 64 cases (the same 37 `--dt` values and each option repeated, on the SRUM database of a
+Windows 11 25H2 machine) were compared with the original run there. 57 are identical. The other 7 are the standard formats with AM or PM
+(`G`, `g`, `f`, `F`, `t`, `T` and empty): .NET on Windows takes its culture data from Windows and writes a space before AM and PM, where ICU, and
+so the Linux originals and the ports, write U+202F.
 
 Not compared, for lack of a sample: `$I30` and `$SDS` with MFTECmd (`$SDS` has no dates; `$I30` follows the same code as `$J`). Not compared with a bad `--dt`:
 EvtxECmd's JSON, and files with rows that have no date before the first that has one (the ports keep such whole rows, by reading how `$LogFile` fails). The
