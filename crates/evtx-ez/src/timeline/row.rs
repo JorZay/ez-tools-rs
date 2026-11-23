@@ -2,7 +2,7 @@
 
 use std::io::{self, Read, Write};
 
-use crate::record::EventRecord;
+use crate::record::{EventRecord, Recovered};
 use crate::time::Timestamp;
 
 /// A record as written to CSV or JSON. `sources` is filled in when the row is written: the files the event was in.
@@ -33,6 +33,8 @@ pub struct Row {
     pub rendering_info: Option<String>,
     /// The whole event as JSON, when it is wanted (--fj)
     pub event_json: Option<String>,
+    /// --rr: where a recovered record was found (None for a live one)
+    pub recovered: Option<Recovered>,
 
     /// The chunk the row came from (an index into the timeline's chunk table, which lists the files that held it)
     pub chunk: u32,
@@ -68,6 +70,7 @@ impl Row {
             payload: r.payload_json(),
             rendering_info: r.rendering_info.clone(),
             event_json: full_json.then(|| r.event_json()),
+            recovered: r.recovered,
             chunk: 0,
             seq: 0,
             content_hash: 0,
@@ -144,6 +147,12 @@ impl Row {
         w.write_all(self.payload.as_bytes())?;
         s(w, &self.rendering_info)?;
         s(w, &self.event_json)?;
+        w.write_all(&[match self.recovered {
+            None => 0,
+            Some(Recovered::Slack) => 1,
+            Some(Recovered::ClearedChunk) => 2,
+            Some(Recovered::AfterError) => 3,
+        }])?;
         w.write_all(&self.chunk.to_le_bytes())?;
         w.write_all(&self.seq.to_le_bytes())?;
         w.write_all(&self.content_hash.to_le_bytes())
@@ -195,6 +204,12 @@ impl Row {
             payload: s(r)?.unwrap_or_default(),
             rendering_info: s(r)?,
             event_json: s(r)?,
+            recovered: match n::<1>(r)?[0] {
+                1 => Some(Recovered::Slack),
+                2 => Some(Recovered::ClearedChunk),
+                3 => Some(Recovered::AfterError),
+                _ => None,
+            },
             chunk: u32::from_le_bytes(n(r)?),
             seq: u64::from_le_bytes(n(r)?),
             content_hash: u128::from_le_bytes(n(r)?),
@@ -215,6 +230,7 @@ mod tests {
             payload_data: [Some("a".into()), None, Some(String::new()), None, None, Some("ü".into())],
             payload: "{}".into(),
             hidden_record: true,
+            recovered: Some(Recovered::AfterError),
             chunk: 3,
             seq: 99,
             content_hash: u128::MAX - 1,

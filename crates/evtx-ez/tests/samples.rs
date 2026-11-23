@@ -34,9 +34,10 @@ fn record_counts() {
         ("issue_201.evtx", 1),
         ("Archive-ForwardedEvents-test.evtx", 653),
         ("MSExchange_Management_wec.evtx", 1),
-        ("sample_with_a_bad_chunk_magic.evtx", 270),
+        // 2026.11: the walk goes on after damaged data (as the Rust parser does)
+        ("sample_with_a_bad_chunk_magic.evtx", 301),
         ("security_bad_string_cache.evtx", 2261),
-        ("sample-with-zero-data-size-event.evtx", 335),
+        ("sample-with-zero-data-size-event.evtx", 449),
         ("sample-with-irregular-bool-values.evtx", 3028),
         ("Security_with_size_t.evtx", 636),
         ("Application_no_crc32.evtx", 17),
@@ -49,6 +50,36 @@ fn record_counts() {
             assert!(r.event_id >= 0, "{name}");
             assert!(r.to_xml().starts_with("<Event>"), "{name} record {}", r.record_number);
         }
+    }
+}
+
+#[test]
+fn recovered_records() {
+    use evtx_ez::record::Recovered;
+    // --rr (EvtxECmd 2026.11): slack, cleared chunks, after a damaged record; the live records stay as they are
+    let cases = [
+        ("security.evtx", 0, 0, 0),
+        ("system.evtx", 0, 0, 0),
+        ("sysmon.evtx", 0, 0, 0),
+        ("Archive-ForwardedEvents-test.evtx", 0, 0, 0),
+        ("2-system-Security-dirty.evtx", 0, 0, 0),
+        ("sample_with_a_bad_chunk_magic.evtx", 50, 0, 0),
+        ("sample-with-zero-data-size-event.evtx", 0, 0, 0),
+        ("Microsoft-Windows-WorkFolders%4WHC.evtx", 0, 2, 0),
+    ];
+    for (name, slack, cleared, after_error) in cases {
+        let file = EvtxFile::from_bytes(fixture(name)).unwrap();
+        let (live, _) = records(name);
+        let mut found = Vec::new();
+        let mut walked = Vec::new();
+        for chunk in file.par_chunks(ParseOptions { recover: true, ..Default::default() }) {
+            let chunk = chunk.unwrap();
+            walked.extend(chunk.records.iter().map(|r| r.to_xml()));
+            found.extend(chunk.recovered.iter().map(|r| r.recovered.unwrap()));
+        }
+        assert_eq!(walked, live.iter().map(|r| r.to_xml()).collect::<Vec<_>>(), "{name}");
+        let count = |k: Recovered| found.iter().filter(|&&f| f == k).count();
+        assert_eq!((count(Recovered::Slack), count(Recovered::ClearedChunk), count(Recovered::AfterError)), (slack, cleared, after_error), "{name}");
     }
 }
 

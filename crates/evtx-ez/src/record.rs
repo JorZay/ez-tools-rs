@@ -9,6 +9,28 @@ use crate::time::Timestamp;
 pub(crate) const RECORD_HEADER_SIZE: usize = 0x18;
 pub(crate) const RECORD_SIGNATURE: u32 = 0x0000_2A2A;
 
+/// Where a record recovered with EvtxECmd's --rr was found (its Recovered column)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Recovered {
+    /// After the last record of a chunk
+    Slack,
+    /// In a chunk whose header says it is empty (a cleared log)
+    ClearedChunk,
+    /// In the chunk's live area (before the free space offset, its number in the header's range) after a record
+    /// that could not be read
+    AfterError,
+}
+
+impl Recovered {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Recovered::Slack => "Slack",
+            Recovered::ClearedChunk => "ClearedChunk",
+            Recovered::AfterError => "AfterError",
+        }
+    }
+}
+
 /// An event, rendered, with the fields EvtxECmd shows. The `map_*`-filled fields (`user_name`, `payload_data`...)
 /// are set when maps are applied.
 #[derive(Debug, Clone)]
@@ -47,6 +69,8 @@ pub struct EventRecord {
     pub extra_data_offset: i64,
     /// A record found hidden in another record's slack (e.g. DanderSpritz's eventlogedit)
     pub hidden_record: bool,
+    /// None for a live record; where a record recovered with --rr was found
+    pub recovered: Option<Recovered>,
 
     root: OutElement,
     /// Index in root.children of the payload element (EventData, UserData, or the element after System)
@@ -103,6 +127,7 @@ impl EventRecord {
             size: size as u32,
             extra_data_offset,
             hidden_record: false,
+            recovered: None,
             root,
             payload: None,
         };
@@ -172,6 +197,39 @@ impl EventRecord {
         h.update(&self.timestamp.0.to_le_bytes());
         hash_element(&mut h, &self.root);
         h.digest128()
+    }
+
+    /// What EvtxECmd's --rr tells two records apart by: an FNV-1a hash (over UTF-16 units) and the length of the
+    /// record number, header time, EventRecordID, event id, provider, channel, computer and payload JSON
+    pub fn content_key(&self) -> (u64, usize) {
+        let ticks = self.timestamp.0.to_string();
+        let number = self.record_number.to_string();
+        let event_id = self.event_id.to_string();
+        let payload = self.payload_json();
+        let parts = [
+            number.as_str(),
+            ticks.as_str(),
+            self.event_record_id.as_deref().unwrap_or(""),
+            event_id.as_str(),
+            self.provider.as_deref().unwrap_or(""),
+            self.channel.as_deref().unwrap_or(""),
+            self.computer.as_deref().unwrap_or(""),
+            payload.as_str(),
+        ];
+        // string.Join("\u0001", ...)
+        let mut hash: u64 = 14695981039346656037;
+        let mut len = 0;
+        let mut add = |c: u16| {
+            hash = (hash ^ c as u64).wrapping_mul(1099511628211);
+            len += 1;
+        };
+        for (i, part) in parts.iter().enumerate() {
+            if i > 0 {
+                add(1);
+            }
+            part.encode_utf16().for_each(&mut add);
+        }
+        (hash, len)
     }
 
     fn build_properties(&mut self) {

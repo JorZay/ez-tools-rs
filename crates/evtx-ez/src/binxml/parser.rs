@@ -21,8 +21,9 @@ pub(crate) enum Node {
     Element(Element),
     /// ValueText: an inline value (normally a string; other types appear in records without templates)
     Text(String),
-    /// The value type is in the substitution too, but the value's own type is what is used
-    Substitution { index: u16, optional: bool },
+    /// The value type is in the substitution too, but the value's own type is what is used (`ty` is only checked
+    /// in strict mode)
+    Substitution { index: u16, optional: bool, ty: u8 },
     CharRef(u16),
     EntityRef(Name),
     CData(String),
@@ -51,6 +52,29 @@ pub(crate) struct Attribute {
 #[derive(Debug)]
 pub(crate) struct TemplateDefinition {
     pub nodes: Vec<Node>,
+    /// Where the definition is in the chunk
+    pub offset: usize,
+    /// The first 4 bytes of the definition's GUID (a template instance's id in strict mode)
+    pub guid_head: u32,
+}
+
+impl TemplateDefinition {
+    /// Every substitution in the definition (outside nested template instances): index and declared type
+    fn substitutions(&self) -> Vec<(u16, u8)> {
+        let mut found = Vec::new();
+        let mut pending: Vec<&Node> = self.nodes.iter().collect();
+        while let Some(n) = pending.pop() {
+            match n {
+                Node::Substitution { index, ty, .. } => found.push((*index, *ty)),
+                Node::Element(e) => {
+                    pending.extend(e.attributes.iter().flat_map(|a| a.value.iter()));
+                    pending.extend(e.content.iter());
+                }
+                _ => {}
+            }
+        }
+        found
+    }
 }
 
 pub(crate) struct BinXmlParser<'a> {
@@ -58,6 +82,11 @@ pub(crate) struct BinXmlParser<'a> {
     names: HashMap<usize, Name>,
     templates: HashMap<usize, Rc<TemplateDefinition>>,
     templates_in_progress: HashSet<usize>,
+    /// For records recovered from slack (--rr): names must be really written as names (NUL, hash, no control
+    /// characters), a template instance's id must be its definition's, and every substitution a template uses must
+    /// have a value of its type family. A recovered record can point at bytes that were overwritten since; without
+    /// this it would render under the wrong names
+    strict: bool,
 }
 
 fn err<T>(message: impl Into<String>, offset: usize, field: &'static str) -> Result<T> {
@@ -66,7 +95,12 @@ fn err<T>(message: impl Into<String>, offset: usize, field: &'static str) -> Res
 
 impl<'a> BinXmlParser<'a> {
     pub fn new(chunk: &'a [u8]) -> Self {
-        BinXmlParser { b: chunk, names: HashMap::new(), templates: HashMap::new(), templates_in_progress: HashSet::new() }
+        BinXmlParser { b: chunk, names: HashMap::new(), templates: HashMap::new(), templates_in_progress: HashSet::new(), strict: false }
+    }
+
+    /// A parser in strict mode (see `strict`), with its own name and template caches
+    pub fn new_strict(chunk: &'a [u8]) -> Self {
+        BinXmlParser { strict: true, ..Self::new(chunk) }
     }
 
     pub fn bytes(&self) -> &'a [u8] {
@@ -233,9 +267,9 @@ impl<'a> BinXmlParser<'a> {
         *pos += 1;
         let index = self.u16(*pos, end)?;
         *pos += 2;
-        self.byte(*pos, end)?;
+        let ty = self.byte(*pos, end)?;
         *pos += 1;
-        Ok(Node::Substitution { index, optional })
+        Ok(Node::Substitution { index, optional, ty })
     }
 
     /// ValueText: a type, then the value (strings are length prefixed; other types have their fixed size)
@@ -314,6 +348,17 @@ impl<'a> BinXmlParser<'a> {
             *pos += size;
         }
 
+        if self.strict {
+            if template_id != template.guid_head {
+                return err(
+                    format!("Template instance id 0x{template_id:X} does not match the template at 0x{:X}", template.offset),
+                    *pos,
+                    "TemplateInstance",
+                );
+            }
+            check_values(&template, &values, *pos)?;
+        }
+
         Ok(Node::TemplateInstance { template, values: values.into() })
     }
 
@@ -340,7 +385,8 @@ impl<'a> BinXmlParser<'a> {
                 );
             }
             let (nodes, _) = self.parse_fragment(data_start, data_start + data_size, true, depth + 1)?;
-            let template = Rc::new(TemplateDefinition { nodes });
+            let guid_head = u32::from_le_bytes(self.b[offset + 4..offset + 8].try_into().unwrap());
+            let template = Rc::new(TemplateDefinition { nodes, offset, guid_head });
             self.templates.insert(offset, template.clone());
             Ok(template)
         })();
@@ -373,8 +419,32 @@ impl<'a> BinXmlParser<'a> {
             return err(format!("Name at 0x{offset:X} ({chars} characters) runs past the end of the chunk"), offset, "Name");
         }
         let name: Name = value::utf16(&self.b[offset + 8..offset + 8 + chars * 2]).into();
+        if self.strict {
+            self.check_name(offset, chars, &name)?;
+        }
         self.names.insert(offset, name.clone());
         Ok(name)
+    }
+
+    /// A name that was really written as one: NUL terminated, its stored hash (the low 16 bits of hash * 65599 +
+    /// each UTF-16 unit) matches, and no control characters
+    fn check_name(&self, offset: usize, chars: usize, name: &str) -> Result<()> {
+        let nul = offset + 8 + chars * 2;
+        if chars == 0 || nul + 2 > self.b.len() || self.b[nul] != 0 || self.b[nul + 1] != 0 {
+            return err(format!("Name at 0x{offset:X} is not NUL terminated"), offset, "Name");
+        }
+        let mut hash: u32 = 0;
+        for c in name.encode_utf16() {
+            // char.IsControl: U+0000-U+001F and U+007F-U+009F
+            if c < 0x20 || (0x7F..=0x9F).contains(&c) {
+                return err(format!("Name at 0x{offset:X} has control characters"), offset, "Name");
+            }
+            hash = hash.wrapping_mul(65599).wrapping_add(c as u32);
+        }
+        if hash as u16 != u16::from_le_bytes([self.b[offset + 4], self.b[offset + 5]]) {
+            return err(format!("Name at 0x{offset:X} ('{name}') does not match its hash"), offset, "Name");
+        }
+        Ok(())
     }
 
     fn read_length_prefixed_string(&mut self, pos: &mut usize, end: usize) -> Result<String> {
@@ -407,6 +477,39 @@ impl<'a> BinXmlParser<'a> {
             return err("BinXml ends early", pos, "BinXml");
         }
         Ok(u32::from_le_bytes(self.b[pos..pos + 4].try_into().unwrap()))
+    }
+}
+
+/// Every substitution of a template has a value of its type family (or NullType)
+fn check_values(template: &TemplateDefinition, values: &[Value], pos: usize) -> Result<()> {
+    for (index, ty) in template.substitutions() {
+        let Some(v) = values.get(index as usize) else {
+            return err(
+                format!("Template at 0x{:X} uses value {index}, the record has {}", template.offset, values.len()),
+                pos,
+                "TemplateInstanceData",
+            );
+        };
+        if v.ty != types::NULL && family(v.ty) != family(ty) {
+            return err(
+                format!("Template at 0x{:X} wants {} for value {index}, the record has {}", template.offset, type_name(ty), type_name(v.ty)),
+                pos,
+                "TemplateInstanceData",
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Types Windows writes for one another: all integers are one family, both string types another, arrays as their
+/// element type
+fn family(ty: u8) -> u16 {
+    use types::*;
+    let t = ty & 0x7F;
+    match t {
+        INT8 | UINT8 | INT16 | UINT16 | INT32 | UINT32 | INT64 | UINT64 | SIZE_T | HEX_INT32 | HEX_INT64 => 0x100,
+        STRING | ANSI_STRING => 0x101,
+        _ => t as u16,
     }
 }
 

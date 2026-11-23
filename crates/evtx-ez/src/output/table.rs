@@ -9,6 +9,9 @@ use crate::timeline::Row;
 /// EvtxECmd's CSV columns, in order
 pub const CSV_HEADER: &str = "RecordNumber,EventRecordId,TimeCreated,EventId,Level,Provider,Channel,ProcessId,ThreadId,Computer,ChunkNumber,UserId,MapDescription,UserName,RemoteHost,PayloadData1,PayloadData2,PayloadData3,PayloadData4,PayloadData5,PayloadData6,ExecutableInfo,HiddenRecord,SourceFile,Keywords,ExtraDataOffset,Payload,RenderingInfo";
 
+/// The column --rr adds after the others
+pub const CSV_RECOVERED_COLUMN: &str = "Recovered";
+
 /// CsvHelper's line ending
 pub const CSV_NEW_LINE: &str = "\r\n";
 
@@ -16,8 +19,8 @@ pub const CSV_NEW_LINE: &str = "\r\n";
 pub const DEFAULT_DATE_FORMAT: &str = "yyyy-MM-dd HH:mm:ss.fffffff";
 
 /// Appends a CSV line (with its line ending). `source` is the SourceFile column; `date_format` is .NET's format for
-/// TimeCreated.
-pub fn write_csv_row(out: &mut String, row: &Row, source: &str, date_format: &str) {
+/// TimeCreated; `recovered_column`: --rr's Recovered column last.
+pub fn write_csv_row(out: &mut String, row: &Row, source: &str, date_format: &str, recovered_column: bool) {
     use std::fmt::Write;
     let o = |out: &mut String, v: &Option<String>| field(out, v.as_deref().unwrap_or(""));
     write!(out, "{},", row.record_number).unwrap();
@@ -54,6 +57,10 @@ pub fn write_csv_row(out: &mut String, row: &Row, source: &str, date_format: &st
     field(out, &row.payload);
     out.push(',');
     o(out, &row.rendering_info);
+    if recovered_column {
+        out.push(',');
+        out.push_str(row.recovered.map_or("", |r| r.as_str()));
+    }
     out.push_str(CSV_NEW_LINE);
 }
 
@@ -89,7 +96,8 @@ pub fn write_json_row(out: &mut String, row: &Row, source: &str, full_json: bool
         .string("Keywords", row.keywords.as_deref())
         .string("SourceFile", Some(source))
         .number("ExtraDataOffset", row.extra_data_offset)
-        .bool("HiddenRecord", row.hidden_record);
+        .bool("HiddenRecord", row.hidden_record)
+        .string("Recovered", row.recovered.map(|r| r.as_str()));
     // ServiceStack leaves out a TimeCreated that is DateTimeOffset's default (a record without one)
     if row.time_created != Timestamp::MIN {
         o.raw("TimeCreated", &format!("\"{}\"", row.time_created.to_json_string()));

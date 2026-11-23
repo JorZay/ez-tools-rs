@@ -3,25 +3,30 @@
 #
 #   tools/parity.sh <EvtxECmd.dll> <Maps folder> <folder of .evtx files> [work folder]
 #
+# PARITY_ARGS adds options to both sides, e.g. PARITY_ARGS=--rr.
+#
 # The rows are compared in file order (--unsorted), as EvtxECmd writes them. Build the release binary first
 # (cargo build --release). EvtxECmd runs with `dotnet`; its own Maps and these must be the same. Outputs that match are
 # deleted right away; those that differ are kept.
 set -euo pipefail
 . "$(dirname "$0")/platform.sh"
 
-dll=$1 maps=$2 logs=$3
+dll=$1 maps=$2
+# the original writes SourceFile as a full path
+logs=$(cd "$3" && pwd)
 work=${4:-$(mktemp -d)}
 here=$(cd "$(dirname "$0")/.." && pwd)
 ours="$here/target/release/evtxecmd"
 mkdir -p "$work/ref" "$work/ours"
+read -r -a extra <<< "${PARITY_ARGS:-}"
 
 same=0 diff=0
 while IFS= read -r -d '' f; do
     n=$(basename "$f" .evtx)
-    dotnet "$dll" -f "$f" --csv "$work/ref" --csvf "$n.csv" --json "$work/ref" --jsonf "$n.json" --maps "$maps" --co false >/dev/null 2>&1 || true
-    dotnet "$dll" -f "$f" --json "$work/ref" --jsonf "$n.fj.json" --fj --maps "$maps" --co false >/dev/null 2>&1 || true
-    "$ours" -f "$f" --csv "$work/ours/$n.csv" --json "$work/ours/$n.json" --maps "$maps" --unsorted --keep-identical --no-log -q 2>/dev/null || true
-    "$ours" -f "$f" --json "$work/ours/$n.fj.json" --fj --maps "$maps" --unsorted --keep-identical --no-log -q 2>/dev/null || true
+    dotnet "$dll" -f "$f" --csv "$work/ref" --csvf "$n.csv" --json "$work/ref" --jsonf "$n.json" --maps "$maps" --co false "${extra[@]}" >/dev/null 2>&1 || true
+    dotnet "$dll" -f "$f" --json "$work/ref" --jsonf "$n.fj.json" --fj --maps "$maps" --co false "${extra[@]}" >/dev/null 2>&1 || true
+    "$ours" -f "$f" --csv "$work/ours/$n.csv" --json "$work/ours/$n.json" --maps "$maps" --unsorted --keep-identical --no-log -q "${extra[@]}" 2>/dev/null || true
+    "$ours" -f "$f" --json "$work/ours/$n.fj.json" --fj --maps "$maps" --unsorted --keep-identical --no-log -q "${extra[@]}" 2>/dev/null || true
     for ext in csv json fj.json; do
         if [ ! -e "$work/ref/$n.$ext" ] && [ ! -e "$work/ours/$n.$ext" ]; then
             continue

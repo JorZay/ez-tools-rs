@@ -77,6 +77,9 @@ pub struct Options<'a> {
     pub temp_dir: Option<PathBuf>,
     /// Seconds a record's time may go back from the one before it without a warning (EvtxECmd's --tdt)
     pub time_discrepancy_threshold: i64,
+    /// Also write records recovered from chunk slack and cleared chunks (EvtxECmd's --rr), after each file's live
+    /// records; ones that are the same as a live record of the file, or as another recovered one, are left out
+    pub recover: bool,
 }
 
 impl Default for Options<'_> {
@@ -91,6 +94,7 @@ impl Default for Options<'_> {
             memory_limit: 256 << 20,
             temp_dir: None,
             time_discrepancy_threshold: 1,
+            recover: false,
         }
     }
 }
@@ -127,6 +131,12 @@ pub struct FileStats {
     pub latest: Option<Timestamp>,
     /// Records per event id (dropped ones included)
     pub event_ids: BTreeMap<i32, usize>,
+    /// --rr: recovered records kept (dropped ones included), left out as the same as a live record, left out as
+    /// copies of another recovered record, and candidates that could not be read
+    pub recovered: usize,
+    pub recovered_duplicates_of_live: usize,
+    pub recovered_duplicates: usize,
+    pub recovery_failures: usize,
 }
 
 /// Progress and messages while a timeline is built
@@ -163,6 +173,8 @@ pub struct Summary {
     pub files_not_event_logs: usize,
     pub files_unreadable: usize,
     pub records: u64,
+    /// --rr: recovered records kept
+    pub recovered: u64,
     pub record_errors: u64,
     pub rows_written: u64,
     pub rows_dropped: u64,
@@ -194,6 +206,10 @@ struct Parsed {
     rows: Vec<Row>,
     errors: Vec<(i64, String)>,
     diagnostics: Vec<Diagnostic>,
+    /// --rr: the content keys of the live records, and the recovered records with theirs
+    live_keys: Vec<(u64, usize)>,
+    recovered: Vec<((u64, usize), Row)>,
+    recovery_failures: usize,
 }
 
 fn by_time(a: &Row, b: &Row) -> Ordering {
@@ -220,7 +236,7 @@ fn parse_block(file: &EvtxFile, block: usize, options: &Options, seen: &HashMap<
     if options.merge && seen.contains_key(&hash) {
         return Outcome::Duplicate(hash);
     }
-    let chunk = match data.parse(ParseOptions { maps: options.maps }) {
+    let chunk = match data.parse(ParseOptions { maps: options.maps, recover: options.recover }) {
         Ok(c) => c,
         Err(e) => return Outcome::Failed(e.message),
     };
@@ -235,7 +251,17 @@ fn parse_block(file: &EvtxFile, block: usize, options: &Options, seen: &HashMap<
         rows: Vec::with_capacity(chunk.records.len()),
         errors: chunk.errors,
         diagnostics: chunk.diagnostics,
+        live_keys: if options.recover { chunk.records.iter().map(|r| r.content_key()).collect() } else { Vec::new() },
+        recovered: Vec::with_capacity(chunk.recovered.len()),
+        recovery_failures: chunk.recovery_failures,
     };
+    for r in &chunk.recovered {
+        let mut row = Row::from_record(r, options.full_json);
+        if options.merge {
+            row.content_hash = r.content_hash();
+        }
+        p.recovered.push((r.content_key(), row));
+    }
     for r in &chunk.records {
         p.event_ids.push(r.event_id);
         p.earliest = Some(p.earliest.map_or(r.timestamp, |e| e.min(r.timestamp)));
@@ -258,6 +284,72 @@ struct Current {
     index: usize,
     stats: FileStats,
     last_seen: i64,
+    /// --rr: the content keys of the file's live records, and its recovered records (written after the live ones)
+    live: HashSet<(u64, usize)>,
+    recovered: Vec<((u64, usize), Row)>,
+}
+
+/// Where rows go while files are read: the sorter, or straight to the sink
+struct Output<'s> {
+    sorter: Option<Sorter>,
+    sink: &'s mut dyn RowSink,
+    seq: u64,
+}
+
+impl Output<'_> {
+    fn push(&mut self, mut row: Row, path: &Path, summary: &mut Summary) -> io::Result<()> {
+        row.seq = self.seq;
+        self.seq += 1;
+        match &mut self.sorter {
+            Some(s) => s.push(row),
+            None => {
+                self.sink.write_row(&row, &[path])?;
+                summary.rows_written += 1;
+                Ok(())
+            }
+        }
+    }
+}
+
+/// The file is done: its recovered records (--rr) are written, then it is reported
+fn finish_file(
+    current: &mut Option<Current>,
+    files: &[PathBuf],
+    filter: &Filter,
+    out: &mut Output,
+    observer: &mut dyn Observer,
+    summary: &mut Summary,
+) -> io::Result<()> {
+    let Some(mut c) = current.take() else {
+        return Ok(());
+    };
+    let path = &files[c.index];
+    let mut seen = HashSet::new();
+    for (key, row) in std::mem::take(&mut c.recovered) {
+        let s = &mut c.stats;
+        if c.live.contains(&key) {
+            // the same record (number, time and content) as a live one: a copy, nothing new
+            s.recovered_duplicates_of_live += 1;
+            continue;
+        }
+        if !seen.insert(key) {
+            s.recovered_duplicates += 1;
+            continue;
+        }
+        s.recovered += 1;
+        summary.recovered += 1;
+        *s.event_ids.entry(row.event_id).or_default() += 1;
+        if !filter.keep(row.event_id, row.time_created) {
+            s.dropped += 1;
+            summary.rows_dropped += 1;
+            continue;
+        }
+        out.push(row, path, summary)?;
+    }
+    summary.files_processed += 1;
+    summary.record_errors += c.stats.errors.len() as u64;
+    observer.file_finished(path, &c.stats);
+    Ok(())
 }
 
 /// Builds a timeline from event log files (see [`discover::find_event_logs`]) and writes its rows to `sink`.
@@ -302,19 +394,11 @@ pub fn run(files: &[PathBuf], options: &Options, observer: &mut dyn Observer, si
     // the files that held each chunk read
     let mut chunk_files: Vec<Vec<u32>> = Vec::new();
     let mut seen: HashMap<u128, u32> = HashMap::new();
-    let mut sorter = (options.order == Order::Time)
+    let sorter = (options.order == Order::Time)
         .then(|| Sorter::new(if merge { by_event as RowCmp } else { by_time as RowCmp }, options.memory_limit, options.temp_dir.clone()));
-    let mut seq: u64 = 0;
+    let mut out = Output { sorter, sink, seq: 0 };
     let mut current: Option<Current> = None;
     let threshold = TICKS_PER_SECOND * options.time_discrepancy_threshold;
-
-    let finish_file = |current: &mut Option<Current>, observer: &mut dyn Observer, summary: &mut Summary| {
-        if let Some(c) = current.take() {
-            summary.files_processed += 1;
-            summary.record_errors += c.stats.errors.len() as u64;
-            observer.file_finished(&files[c.index], &c.stats);
-        }
-    };
     // files without blocks are still reported
     let mut next_open = 0;
 
@@ -327,7 +411,7 @@ pub fn run(files: &[PathBuf], options: &Options, observer: &mut dyn Observer, si
             let (index, file) = (&opened[o].0, opened[o].1.as_ref().unwrap());
             let path = &files[*index];
             if current.as_ref().is_none_or(|c| c.index != *index) {
-                finish_file(&mut current, observer, &mut summary);
+                finish_file(&mut current, files, &options.filter, &mut out, observer, &mut summary)?;
                 while next_open < o {
                     // files before this one with no blocks
                     let (i, f) = (&opened[next_open].0, opened[next_open].1.as_ref().unwrap());
@@ -338,7 +422,13 @@ pub fn run(files: &[PathBuf], options: &Options, observer: &mut dyn Observer, si
                 }
                 next_open = o + 1;
                 observer.file_started(path, file.header(), file.block_count());
-                current = Some(Current { index: *index, stats: empty_stats(file), last_seen: 0 });
+                current = Some(Current {
+                    index: *index,
+                    stats: empty_stats(file),
+                    last_seen: 0,
+                    live: HashSet::new(),
+                    recovered: Vec::new(),
+                });
             }
             let c = current.as_mut().unwrap();
             let offset = file.block(b).offset;
@@ -416,17 +506,15 @@ pub fn run(files: &[PathBuf], options: &Options, observer: &mut dyn Observer, si
                 c.last_seen = tc.0;
             }
 
+            c.live.extend(p.live_keys);
+            s.recovery_failures += p.recovery_failures;
+            for (key, mut row) in p.recovered {
+                row.chunk = uid;
+                c.recovered.push((key, row));
+            }
             for mut row in p.rows {
                 row.chunk = uid;
-                row.seq = seq;
-                seq += 1;
-                match &mut sorter {
-                    Some(s) => s.push(row)?,
-                    None => {
-                        sink.write_row(&row, &[path.as_path()])?;
-                        summary.rows_written += 1;
-                    }
-                }
+                out.push(row, path, &mut summary)?;
             }
         }
         // the files before the current one are done: unmap them
@@ -436,7 +524,7 @@ pub fn run(files: &[PathBuf], options: &Options, observer: &mut dyn Observer, si
         }
         released = released.max(done);
     }
-    finish_file(&mut current, observer, &mut summary);
+    finish_file(&mut current, files, &options.filter, &mut out, observer, &mut summary)?;
     for (i, f) in &opened[next_open.min(opened.len())..] {
         let f = f.as_ref().unwrap();
         observer.file_started(&files[*i], f.header(), 0);
@@ -444,6 +532,7 @@ pub fn run(files: &[PathBuf], options: &Options, observer: &mut dyn Observer, si
         summary.files_processed += 1;
     }
 
+    let Output { sorter, sink, seq } = out;
     let Some(sorter) = sorter else {
         return Ok(summary);
     };
@@ -475,6 +564,10 @@ pub fn run(files: &[PathBuf], options: &Options, observer: &mut dyn Observer, si
             if let Some((p, chunks)) = &mut pending {
                 if p.same_event(&row) {
                     p.hidden_record |= row.hidden_record;
+                    // a copy that is live makes the event live
+                    if row.recovered.is_none() {
+                        p.recovered = None;
+                    }
                     if !chunks.contains(&row.chunk) {
                         chunks.push(row.chunk);
                     }
@@ -518,5 +611,9 @@ fn empty_stats(f: &EvtxFile) -> FileStats {
         earliest: None,
         latest: None,
         event_ids: BTreeMap::new(),
+        recovered: 0,
+        recovered_duplicates_of_live: 0,
+        recovered_duplicates: 0,
+        recovery_failures: 0,
     }
 }

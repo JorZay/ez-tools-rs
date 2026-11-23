@@ -56,6 +56,12 @@ struct Args {
     #[arg(long, conflicts_with = "merge")]
     unsorted: bool,
 
+    /// Recover records: also look for event records left in chunk slack and in chunks emptied when the log was
+    /// cleared. They come after each file's live records, with a Recovered column (Slack, ClearedChunk, or
+    /// AfterError for records after a damaged one); copies of live records are left out
+    #[arg(long)]
+    rr: bool,
+
     /// Read files even when they have the same bytes as one read already
     #[arg(long)]
     keep_identical: bool,
@@ -275,7 +281,7 @@ fn run(args: Args) -> Result<ExitCode, String> {
     }
     log.info(&format!("\nFound {} event log file(s)", output::n0(found.files.len() as u64)));
 
-    let mut sink = output::Writer::create(csv_path.as_deref(), json_path.as_deref(), &args.dt, args.fj)?;
+    let mut sink = output::Writer::create(csv_path.as_deref(), json_path.as_deref(), &args.dt, args.fj, args.rr)?;
     if let Some(p) = &csv_path {
         log.info(&format!("CSV output will be saved to {}", p.display()));
     }
@@ -293,8 +299,10 @@ fn run(args: Args) -> Result<ExitCode, String> {
         memory_limit: args.mem.max(16) << 20,
         temp_dir: args.temp.clone(),
         time_discrepancy_threshold: args.tdt,
+        recover: args.rr,
     };
-    let mut observer = ConsoleObserver { log: &mut log, filter: &filter, metrics: !args.no_metrics, map_warnings: 0, failed: false };
+    let mut observer =
+        ConsoleObserver { log: &mut log, filter: &filter, metrics: !args.no_metrics, recover: args.rr, map_warnings: 0, failed: false };
     let result = timeline::run(&found.files, &options, &mut observer, &mut sink);
     let map_warnings = observer.map_warnings;
     failed |= observer.failed;
@@ -333,11 +341,12 @@ fn run(args: Args) -> Result<ExitCode, String> {
         log.debug(&format!("Sorted with {} temporary files", summary.temp_files));
     }
     log.info(&format!(
-        "Processed {} {} in {:.4} seconds: {} records, {} rows written, {} dropped, {} errors",
+        "Processed {} {} in {:.4} seconds: {} records{}, {} rows written, {} dropped, {} errors",
         output::n0(summary.files_processed as u64),
         if summary.files_processed == 1 { "file" } else { "files" },
         start.elapsed().as_secs_f64(),
         output::n0(summary.records),
+        if args.rr { format!(" and {} recovered", output::n0(summary.recovered)) } else { String::new() },
         output::n0(summary.rows_written),
         output::n0(summary.rows_dropped),
         output::n0(summary.record_errors)
@@ -350,6 +359,7 @@ struct ConsoleObserver<'a> {
     log: &'a mut Logger,
     filter: &'a Filter,
     metrics: bool,
+    recover: bool,
     map_warnings: u64,
     failed: bool,
 }
@@ -386,7 +396,7 @@ impl Observer for ConsoleObserver<'_> {
 
     fn file_finished(&mut self, _path: &Path, s: &FileStats) {
         let fmt_time = |t: Option<Timestamp>| t.map(|t| t.to_string()).unwrap_or_default();
-        let included = s.records - s.dropped;
+        let included = s.records + s.recovered - s.dropped;
         let mut text = format!(
             "\nEvent log details\nFlags: {}\nChunk count: {}\nStored/Calculated CRC: {:X}/{:X}\nEarliest timestamp: {}\nLatest timestamp:   {}\nTotal event log records found: {}\n",
             s.header.flags_text(),
@@ -410,6 +420,15 @@ impl Observer for ConsoleObserver<'_> {
             output::n0(s.dropped as u64)
         ));
         self.log.info(&text);
+        if self.recover {
+            self.log.info(&format!(
+                "Recovered records (--rr): {}, included above (Recovered column). Left out: {} the same as a live record (record number, time and content), {} copies of another recovered record. {} possible records in slack could not be read",
+                output::n0(s.recovered as u64),
+                output::n0(s.recovered_duplicates_of_live as u64),
+                output::n0(s.recovered_duplicates as u64),
+                output::n0(s.recovery_failures as u64)
+            ));
+        }
         if !s.errors.is_empty() {
             self.log.info("\nErrors");
             for (n, m) in &s.errors {

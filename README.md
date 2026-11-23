@@ -213,6 +213,8 @@ or the system's temporary folder) and are merged, so the size of a case is not l
   `tools/parity.sh` checks it. The default order is by time.
 - JSON lines end with CRLF, as EvtxECmd writes them on Windows (on Linux it writes LF). CSV lines end with CRLF.
 - `-f` and `-d` can be repeated and combined. `--csvf`/`--jsonf` are gone: `--csv`/`--json` take a file name.
+- `--rr` (EvtxECmd 2026.11) recovers records from chunk slack and cleared chunks; they come after each file's live
+  records (in file order, or sorted with the rest), with the `Recovered` column last.
 - Not ported: `--vss` (Volume Shadow Copies) and reading locked files from a live system; this tool is for
   extractions. Mount shadow copies (e.g. with `vshadowmount`) and pass the folders with `-d`. `--xml` is not ported
   (the library has `EventRecord::to_xml`).

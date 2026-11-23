@@ -3,7 +3,7 @@
 use std::io::{self, Write};
 use std::path::Path;
 
-use evtx_ez::output::table::{CSV_HEADER, CSV_NEW_LINE, write_csv_row, write_json_row};
+use evtx_ez::output::table::{CSV_HEADER, CSV_NEW_LINE, CSV_RECOVERED_COLUMN, write_csv_row, write_json_row};
 use evtx_ez::timeline::{Row, RowSink};
 
 pub use ez_common::cli::{BOM, open, resolve, utc_now};
@@ -15,15 +15,29 @@ pub struct Writer {
     date_format: String,
     date_format_ok: bool,
     full_json: bool,
+    /// --rr: the Recovered column
+    recovered_column: bool,
     buf: String,
 }
 
 impl Writer {
-    pub fn create(csv: Option<&Path>, json: Option<&Path>, date_format: &str, full_json: bool) -> Result<Writer, String> {
-        let mut w = Writer { csv: None, json: None, date_format: date_format.to_string(), date_format_ok: ez_common::Timestamp::check_format(date_format).is_ok(), full_json, buf: String::new() };
+    pub fn create(csv: Option<&Path>, json: Option<&Path>, date_format: &str, full_json: bool, recovered_column: bool) -> Result<Writer, String> {
+        let mut w = Writer {
+            csv: None,
+            json: None,
+            date_format: date_format.to_string(),
+            date_format_ok: ez_common::Timestamp::check_format(date_format).is_ok(),
+            full_json,
+            recovered_column,
+            buf: String::new(),
+        };
         if let Some(p) = csv {
             let mut f = open(p)?;
-            let header = format!("{CSV_HEADER}{CSV_NEW_LINE}");
+            let header = if recovered_column {
+                format!("{CSV_HEADER},{CSV_RECOVERED_COLUMN}{CSV_NEW_LINE}")
+            } else {
+                format!("{CSV_HEADER}{CSV_NEW_LINE}")
+            };
             f.write_all(BOM).and_then(|_| f.write_all(header.as_bytes())).map_err(|e| e.to_string())?;
             w.csv = Some(f);
         }
@@ -56,7 +70,7 @@ impl RowSink for Writer {
             self.buf.clear();
             // a --dt that .NET rejects fails every record: the CSV keeps its header
             if self.date_format_ok {
-                write_csv_row(&mut self.buf, row, &source, &self.date_format);
+                write_csv_row(&mut self.buf, row, &source, &self.date_format, self.recovered_column);
             }
             f.write_all(self.buf.as_bytes())?;
         }
