@@ -8,6 +8,7 @@
 pub mod attributes;
 pub mod export;
 pub mod record;
+pub mod resident;
 pub mod security;
 pub mod sid_types;
 

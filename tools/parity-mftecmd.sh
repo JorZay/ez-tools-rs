@@ -3,7 +3,7 @@
 #
 #   tools/parity-mftecmd.sh <MFTECmd.dll> [work folder] < cases
 #
-# Each line of `cases` is a file, a tab, and extra arguments, e.g.
+# Each line of `cases` is a file (or a folder, given with -d), a tab, and extra arguments, e.g.
 #   /cases/C/$MFT<TAB>--fl --sn --body {out} --bdl c
 # {out} is replaced by the output folder. --csv/--csvf (and --json/--jsonf for $MFT, $J and $LogFile) are added.
 # .gz files are decompressed first. Build the release binary first (cargo build --release).
@@ -28,7 +28,9 @@ while IFS=$'\t' read -r file extra; do
     for side in ref ours; do
         out="$work/$n-$side"
         mkdir -p "$out"
-        args=(-f "$file" --csv "$out" --csvf out.csv --json "$out" --jsonf out.json --co false)
+        input=-f
+        [ -d "$file" ] && input=-d
+        args=("$input" "$file" --csv "$out" --csvf out.csv --json "$out" --jsonf out.json --co false)
         read -r -a more <<< "${extra//\{out\}/$out}"
         if [ $side = ref ]; then
             dotnet "$dll" "${args[@]}" "${more[@]}" > "$out.log" 2>&1

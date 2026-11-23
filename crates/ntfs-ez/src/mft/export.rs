@@ -28,6 +28,8 @@ pub struct ExportOptions {
     pub dump_resident: bool,
     /// The SourceFile column
     pub source_file: String,
+    /// --dt, for the deletion time of Recycle Bin $I files (ResidentDataDecoded)
+    pub date_format: String,
 }
 
 /// A row (MFTRecordOut)
@@ -73,6 +75,8 @@ pub struct MftRow {
     pub resident_data_hex: Option<String>,
     pub resident_data_ascii: Option<String>,
     pub parse_errors: Option<String>,
+    /// Resident $DATA decoded: Recycle Bin $I files (always) and, with --ir, UTF-16 text the ASCII column can't show
+    pub resident_data_decoded: Option<String>,
 }
 
 /// What a record gives: its rows, and resident data to save (--dr: file name, bytes)
@@ -271,6 +275,20 @@ fn csv_data(mft: &Mft, fr: &FileRecord, fn_attribute_id: i32, fi: &FileInfo, ads
     if o.include_resident && ads.is_none() {
         resident_data(&mut r, fr, o);
     }
+    if ads.is_none() && super::resident::is_recycle_bin_info_name(&r.file_name) {
+        // Issues #260: $I files stay in the FILE record (in use or free) after the Recycle Bin is emptied
+        let data = fr
+            .attributes
+            .iter()
+            .find(|a| matches!(a.body, AttributeBody::Data(_)) && a.header.resident && a.header.name.is_empty())
+            .and_then(|a| match &a.body {
+                AttributeBody::Data(d) => d.resident.as_deref(),
+                _ => None,
+            });
+        if let Some(info) = data.and_then(|d| super::resident::decode_recycle_bin_info(d, &o.date_format)) {
+            r.resident_data_decoded = Some(info);
+        }
+    }
     Ok(r)
 }
 
@@ -298,6 +316,9 @@ fn resident_data(r: &mut MftRow, fr: &FileRecord, o: &ExportOptions) {
     let text = net::utf8(data);
     if text.chars().all(|c| c.is_control() || c.is_whitespace() || (' '..='~').contains(&c)) {
         r.resident_data_ascii = Some(text.into_owned());
+    } else {
+        // text the ASCII column can't show
+        r.resident_data_decoded = super::resident::decode_utf16_text(data);
     }
 }
 
@@ -319,7 +340,7 @@ pub fn csv_header(include_resident: bool) -> String {
     if include_resident {
         h.push_str("ResidentDataBase64,ResidentDataHex,ResidentDataASCII,");
     }
-    h.push_str("ParseErrors");
+    h.push_str("ParseErrors,ResidentDataDecoded");
     h.push_str(NEW_LINE);
     h
 }
@@ -405,10 +426,12 @@ pub fn write_csv(out: &mut String, r: &MftRow, dt: &str, include_resident: bool)
         out.push(',');
     }
     o(out, &r.parse_errors);
+    out.push(',');
+    o(out, &r.resident_data_decoded);
     out.push_str(NEW_LINE);
 }
 
-/// Appends a JSON line (ServiceStack: properties in order, nulls left out, enums as numbers)
+/// Appends a JSON line (ServiceStack: properties in order, nulls left out; enums by name, as the CSV has them)
 pub fn write_json(out: &mut String, r: &MftRow) {
     let ts = |v: Option<Timestamp>| v.map(|t| format!("\"{}\"", t.to_json_string()));
     let mut j = ServiceStackObject::new();
@@ -442,11 +465,11 @@ pub fn write_json(out: &mut String, r: &MftRow) {
         .number("LogfileSequenceNumber", r.logfile_sequence_number)
         .number("SecurityId", r.security_id)
         .string("ZoneIdContents", r.zone_id_contents.as_deref())
-        .number("SiFlags", r.si_flags)
+        .string("SiFlags", Some(&net::flags_name(r.si_flags as i64, SI_FLAG_NAMES).replace(", ", "|")))
         .string("ObjectIdFileDroid", r.object_id_file_droid.as_deref())
         .string("ReparseTarget", r.reparse_target.as_deref())
         .number("ReferenceCount", r.reference_count)
-        .number("NameType", r.name_type)
+        .string("NameType", Some(&net::flags_name(r.name_type as i64, NAME_TYPE_NAMES)))
         .string("LoggedUtilStream", r.logged_util_stream.as_deref())
         .bool("Timestomped", r.timestomped)
         .bool("uSecZeros", r.usec_zeros)
@@ -457,7 +480,8 @@ pub fn write_json(out: &mut String, r: &MftRow) {
         .string("ResidentDataBase64", r.resident_data_base64.as_deref())
         .string("ResidentDataHex", r.resident_data_hex.as_deref())
         .string("ResidentDataASCII", r.resident_data_ascii.as_deref())
-        .string("ParseErrors", r.parse_errors.as_deref());
+        .string("ParseErrors", r.parse_errors.as_deref())
+        .string("ResidentDataDecoded", r.resident_data_decoded.as_deref());
     out.push_str(&j.finish());
     out.push_str(ez_common::dotnet::NEW_LINE);
 }

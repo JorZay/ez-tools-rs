@@ -26,13 +26,24 @@ const SDS_SIG: i32 = 0x32FEC6CBu32 as i32;
 #[derive(Parser, Debug)]
 #[command(version, after_help = "Examples:\n  mftecmd -f '/cases/C/$MFT' --csv out\n  mftecmd -f '/cases/C/$J' -m '/cases/C/$MFT' --csv out\n  mftecmd -f '/cases/C/$MFT' --body out --bdl c")]
 struct Args {
-    /// File to process ($MFT | $J | $LogFile | $Boot | $SDS | $I30)
+    /// File to process ($MFT | $J | $LogFile | $Boot | $SDS | $I30). This or -d is required
     #[arg(short = 'f', value_name = "FILE")]
     file: Option<PathBuf>,
 
-    /// $MFT file to use when -f points to a $J or $LogFile file, to resolve parent paths
+    /// Directory to search recursively for $MFT files (named $MFT*). All of them go into one CSV/JSON/bodyfile, with
+    /// SourceFile saying which $MFT each row is from
+    #[arg(short = 'd', value_name = "DIR")]
+    dir: Option<PathBuf>,
+
+    /// $MFT file to use when -f points to a $J, $LogFile or $I30 file, to resolve parent paths. For $J, the paths are
+    /// as they were when each record was written
     #[arg(short = 'm', value_name = "FILE")]
     mft: Option<PathBuf>,
+
+    /// When true, do not write CSV, JSON or bodyfile output for the $MFT specified with -m (it is only used for the
+    /// paths)
+    #[arg(long, action = ArgAction::Set, num_args = 0..=1, default_value_t = false, default_missing_value = "true", value_name = "BOOL")]
+    mno: bool,
 
     /// Directory to save CSV formatted results to
     #[arg(long, value_name = "DIR")]
@@ -298,10 +309,23 @@ fn run(args: Args) -> Result<ExitCode, String> {
         }
     }
 
-    let Some(file) = args.file.clone() else {
-        return Err("-f is required. Exiting (see --help)".into());
-    };
-    if !file.exists() {
+    if args.file.is_none() && args.dir.is_none() {
+        return Err("-f or -d is required. Exiting (see --help)".into());
+    }
+    if args.file.is_some() && args.dir.is_some() {
+        return Err("-f and -d can't be used together. Exiting".into());
+    }
+    if let Some(d) = &args.dir {
+        if !d.is_dir() {
+            log.warning(&format!("Directory {} not found. Exiting", d.display()));
+            return Ok(ExitCode::FAILURE);
+        }
+    }
+    if args.mno && args.mft.is_none() {
+        return Err("--mno requires -m. Exiting".into());
+    }
+    let file = args.file.clone().unwrap_or_default();
+    if args.dir.is_none() && !file.exists() {
         log.warning(&format!("File {} not found. Exiting", file.display()));
         return Ok(ExitCode::FAILURE);
     }
@@ -327,6 +351,11 @@ fn run(args: Args) -> Result<ExitCode, String> {
         None => None,
     };
 
+    if let Some(d) = args.dir.clone() {
+        let mut r = Run { args, log, run_time, cutoff, mft: None, custom_names: true };
+        return process_mft_directory(&mut r, &d);
+    }
+
     let ft = match file_type(&file, &mut log) {
         Ok(t) => t,
         Err(empty) => return Ok(if empty { ExitCode::SUCCESS } else { ExitCode::FAILURE }),
@@ -349,7 +378,8 @@ fn run(args: Args) -> Result<ExitCode, String> {
             if a.dd.is_some() && a.dump_offset.is_none() {
                 return Err("--do is required when using --dd. Exiting".into());
             }
-            process_mft(&mut r, &file)
+            let out = MftOut::from_args(&r.args);
+            process_mft(&mut r, &file, &out)
         }
         FileType::Boot => process_boot(&mut r, &file),
         FileType::UsnJournal | FileType::LogFile => {
@@ -358,22 +388,9 @@ fn run(args: Args) -> Result<ExitCode, String> {
             }
             let mut ok = true;
             if let Some(m) = r.args.mft.clone() {
-                if !m.exists() {
-                    r.log.error(&format!("MFT file {} does not exist! Verify path and try again. Exiting\n", m.display()));
-                    return Ok(ExitCode::FAILURE);
-                }
-                match file_type(&m, &mut r.log) {
-                    Ok(FileType::Mft) => {}
-                    other => {
-                        r.log.error(&format!("File {} is not an MFT file!! Verify path and try again. Exiting", m.display()));
-                        return Ok(if matches!(other, Err(false)) { ExitCode::FAILURE } else { ExitCode::SUCCESS });
-                    }
-                }
-                r.custom_names = false;
-                ok &= process_mft(&mut r, &m);
-                r.custom_names = true;
-                if r.mft.is_none() {
-                    return Ok(if ok { ExitCode::SUCCESS } else { ExitCode::FAILURE });
+                match load_mft_for_paths(&mut r, &m) {
+                    Ok(loaded) => ok &= loaded,
+                    Err(code) => return Ok(code),
                 }
             }
             if ft == FileType::UsnJournal {
@@ -384,16 +401,24 @@ fn run(args: Args) -> Result<ExitCode, String> {
             ok
         }
         FileType::Sds => {
-            if r.args.csv.is_none() && r.args.ds.is_none() {
-                return Err("--csv or --ds is required. Exiting".into());
+            if r.args.csv.is_none() && r.args.json.is_none() && r.args.ds.is_none() {
+                return Err("--csv, --json or --ds is required. Exiting".into());
             }
             process_sds(&mut r, &file)
         }
         FileType::I30 => {
-            if r.args.csv.is_none() {
-                return Err("--csv is required. Exiting".into());
+            if r.args.csv.is_none() && r.args.json.is_none() {
+                return Err("--csv or --json is required. Exiting".into());
             }
-            process_i30(&mut r, &file)
+            let mut ok = true;
+            if let Some(m) = r.args.mft.clone() {
+                // the $MFT gives the parent paths (issue #194)
+                match load_mft_for_paths(&mut r, &m) {
+                    Ok(loaded) => ok &= loaded,
+                    Err(code) => return Ok(code),
+                }
+            }
+            ok & process_i30(&mut r, &file)
         }
         FileType::Unknown => {
             r.log.error(&format!("Unknown file type! Send {} to saericzimmerman@gmail.com for assistance. Exiting", file.display()));
@@ -418,9 +443,210 @@ fn open_out(path: &Path, bom: bool) -> std::io::Result<BufWriter<File>> {
     Ok(w)
 }
 
+/// Where an $MFT's outputs go
+struct MftOut {
+    csv: Option<PathBuf>,
+    json: Option<PathBuf>,
+    body: Option<PathBuf>,
+    /// --dr: the Resident folder
+    resident: Option<PathBuf>,
+}
+
+impl MftOut {
+    fn from_args(a: &Args) -> MftOut {
+        MftOut {
+            csv: a.csv.clone(),
+            json: a.json.clone(),
+            body: a.body.clone(),
+            resident: a.dr.then(|| a.json.clone().or(a.csv.clone()).map(|d| d.join("Resident"))).flatten(),
+        }
+    }
+}
+
+/// LoadMftForPaths: the $MFT given with -m, which gives the paths for $J, $LogFile and $I30. It is exported too, with
+/// its default names (--csvf/--jsonf/--bodyf are for -f), unless --mno is given. Ok(false) when its export failed;
+/// Err with the exit code to stop with.
+fn load_mft_for_paths(r: &mut Run, m: &Path) -> Result<bool, ExitCode> {
+    if !m.exists() {
+        r.log.error(&format!("MFT file {} does not exist! Verify path and try again. Exiting\n", m.display()));
+        return Err(ExitCode::FAILURE);
+    }
+    match file_type(m, &mut r.log) {
+        Ok(FileType::Mft) => {}
+        other => {
+            r.log.error(&format!("File {} is not an MFT file!! Verify path and try again. Exiting", m.display()));
+            return Err(if matches!(other, Err(false)) { ExitCode::FAILURE } else { ExitCode::SUCCESS });
+        }
+    }
+    let mut out = MftOut::from_args(&r.args);
+    if r.args.mno {
+        (out.csv, out.json, out.body) = (None, None, None);
+    }
+    r.custom_names = false;
+    let ok = process_mft(r, m, &out);
+    r.custom_names = true;
+    if r.mft.is_none() {
+        // the $MFT could not be loaded: 1 when it could not be read, 0 when it is damaged
+        return Err(if ok { ExitCode::SUCCESS } else { ExitCode::FAILURE });
+    }
+    Ok(ok)
+}
+
+/// -d (issue #109): every $MFT under `d` into one output of each kind. Each is processed into a numbered folder of a
+/// temporary folder in each output folder, then the outputs are joined by file name (CSVs keep one header line).
+fn process_mft_directory(r: &mut Run, d: &Path) -> Result<ExitCode, String> {
+    let a = &r.args;
+    if a.csv.is_none() && a.json.is_none() && a.body.is_none() {
+        return Err("--csv, --json or --body is required with -d. Exiting".into());
+    }
+    if a.body.is_some() && a.bdl.as_deref().is_none_or(str::is_empty) {
+        return Err("--bdl is required when using --body. Exiting".into());
+    }
+    for (used, name) in [(a.mft.is_some(), "-m"), (a.vss, "--vss"), (a.de.is_some(), "--de"), (a.dd.is_some(), "--dd"), (a.dr, "--dr")] {
+        if used {
+            return Err(format!("{name} can't be used with -d. Exiting"));
+        }
+    }
+
+    let (candidates, folder_errors) = find_mft_files(d);
+    for e in &folder_errors {
+        r.log.error(e);
+    }
+    let mut mft_files = Vec::new();
+    for c in candidates {
+        match file_type(&c, &mut r.log) {
+            Ok(FileType::Mft) => mft_files.push(c),
+            Ok(t) => r.log.warning(&format!("Skipping {}: not an $MFT ({})", c.display(), t.name())),
+            Err(_) => r.log.warning(&format!("Skipping {}: not an $MFT (unknown, empty or unreadable)", c.display())),
+        }
+    }
+    r.log.info(&format!("Found {} under {}", plural(mft_files.len(), "$MFT file"), d.display()));
+    r.log.info("");
+    if mft_files.is_empty() {
+        // nothing to do is not a failure of the tool; a folder that could not be read is
+        return Ok(if folder_errors.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE });
+    }
+
+    let run_time = r.run_time.format("yyyyMMddHHmmss");
+    let temp_root = |dir: &Path| dir.join(format!(".MFTECmd_{run_time}_d"));
+    let mut out_dirs: Vec<PathBuf> = Vec::new();
+    for dir in [&r.args.csv, &r.args.json, &r.args.body].into_iter().flatten() {
+        let full = std::path::absolute(dir).unwrap_or_else(|_| dir.clone());
+        if !out_dirs.iter().any(|o| ez_common::dotnet::ordinal_ignore_case(&o.to_string_lossy()) == ez_common::dotnet::ordinal_ignore_case(&full.to_string_lossy())) {
+            out_dirs.push(full);
+        }
+    }
+
+    let mut ok = folder_errors.is_empty();
+    let count = mft_files.len();
+    for (i, f) in mft_files.iter().enumerate() {
+        r.log.info(&format!("Processing {} ({} of {count})...", f.display(), i + 1));
+        let part = |dir: &Option<PathBuf>| dir.as_ref().map(|d| temp_root(d).join(format!("{i:04}")));
+        let out = MftOut { csv: part(&r.args.csv), json: part(&r.args.json), body: part(&r.args.body), resident: None };
+        ok &= process_mft(r, f, &out);
+        r.mft = None;
+    }
+
+    r.log.info("");
+    let mut combine = || -> std::io::Result<()> {
+        for dir in &out_dirs {
+            for joined in combine_parts(&temp_root(dir), dir)? {
+                r.log.info(&format!("Output for all {}: {}", plural(count, "$MFT"), joined.display()));
+            }
+        }
+        Ok(())
+    };
+    if let Err(e) = combine() {
+        r.log.error(&format!("Error writing the combined output: {e}"));
+        ok = false;
+    }
+    for dir in &out_dirs {
+        let root = temp_root(dir);
+        if root.is_dir() {
+            if let Err(e) = std::fs::remove_dir_all(&root) {
+                r.log.warning(&format!("Could not delete the temporary folder {}: {e}", root.display()));
+            }
+        }
+    }
+    r.log.info("");
+    Ok(if ok { ExitCode::SUCCESS } else { ExitCode::FAILURE })
+}
+
+fn plural(count: usize, one: &str) -> String {
+    if count == 1 { format!("1 {one}") } else { format!("{} {one}s", n0(count as u64)) }
+}
+
+/// Files under `dir` named $MFT* (not $MFTMirr), sorted (OrdinalIgnoreCase); and the folders that could not be read
+fn find_mft_files(dir: &Path) -> (Vec<PathBuf>, Vec<String>) {
+    use ez_common::dotnet::ordinal_ignore_case;
+    let mut found = Vec::new();
+    let mut errors = Vec::new();
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(current) = pending.pop() {
+        let entries = match std::fs::read_dir(&current).and_then(|rd| rd.collect::<std::io::Result<Vec<_>>>()) {
+            Ok(e) => e,
+            Err(e) => {
+                errors.push(format!("Unable to read folder {}: {e}", current.display()));
+                continue;
+            }
+        };
+        for e in entries {
+            let path = e.path();
+            if path.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            let name = ordinal_ignore_case(&e.file_name().to_string_lossy());
+            if name.starts_with("$MFT") && !name.starts_with("$MFTMIRR") {
+                found.push(path);
+            }
+        }
+    }
+    found.sort_by_cached_key(|p| ordinal_ignore_case(&p.to_string_lossy()).encode_utf16().collect::<Vec<u16>>());
+    (found, errors)
+}
+
+/// Joins the files in each of `temp_root`'s numbered folders into `out_dir`, by file name (OrdinalIgnoreCase, in
+/// that order), in folder order. CSVs keep only the first file's header line (the rest are copied from after their
+/// first LF). Returns the joined files.
+fn combine_parts(temp_root: &Path, out_dir: &Path) -> std::io::Result<Vec<PathBuf>> {
+    use ez_common::dotnet::ordinal_ignore_case;
+    use std::collections::BTreeMap;
+    let mut joined = Vec::new();
+    if !temp_root.is_dir() {
+        return Ok(joined);
+    }
+    let mut parts: Vec<PathBuf> = std::fs::read_dir(temp_root)?.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.is_dir()).collect();
+    parts.sort_by_key(|p| p.to_string_lossy().encode_utf16().collect::<Vec<u16>>());
+    let mut by_name: BTreeMap<Vec<u16>, (String, Vec<PathBuf>)> = BTreeMap::new();
+    for part in parts {
+        for e in std::fs::read_dir(&part)? {
+            let path = e?.path();
+            if !path.is_file() {
+                continue;
+            }
+            let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+            by_name.entry(ordinal_ignore_case(&name).encode_utf16().collect()).or_insert_with(|| (name, Vec::new())).1.push(path);
+        }
+    }
+    for (_, (name, files)) in by_name {
+        let target = out_dir.join(&name);
+        let is_csv = ordinal_ignore_case(&name).ends_with(".CSV");
+        let mut output = BufWriter::new(File::create(&target)?);
+        for (i, f) in files.iter().enumerate() {
+            let data = std::fs::read(f)?;
+            let start = if i > 0 && is_csv { data.iter().position(|&b| b == b'\n').map_or(data.len(), |p| p + 1) } else { 0 };
+            output.write_all(&data[start..])?;
+        }
+        output.flush()?;
+        joined.push(target);
+    }
+    Ok(joined)
+}
+
 /// ProcessMft: loads the $MFT (kept in r.mft) and writes its outputs; false when it could not be read or an export
 /// failed
-fn process_mft(r: &mut Run, file: &Path) -> bool {
+fn process_mft(r: &mut Run, file: &Path, out: &MftOut) -> bool {
     let sw = Instant::now();
     let load = ntfs_ez::mft::LoadOptions { recover_slack: r.args.rs, date_format: r.args.dt.clone() };
     let mft = match Mft::open_with(file, &load) {
@@ -434,7 +660,7 @@ fn process_mft(r: &mut Run, file: &Path) -> bool {
         r.log.warning(w);
     }
     r.log.info(&format!("Processed {} in {:.4} seconds\n", file.display(), sw.elapsed().as_secs_f64()));
-    let ok = mft_outputs(r, &mft, file);
+    let ok = mft_outputs(r, &mft, file, out);
     r.mft = Some(mft);
     ok
 }
@@ -443,7 +669,7 @@ fn custom(r: &Run, name: &Option<String>) -> Option<String> {
     if r.custom_names { name.clone() } else { None }
 }
 
-fn mft_outputs(r: &mut Run, mft: &Mft, file: &Path) -> bool {
+fn mft_outputs(r: &mut Run, mft: &Mft, file: &Path, outs: &MftOut) -> bool {
 
     let source = file.to_string_lossy().into_owned();
     r.log.info(&format!(
@@ -477,7 +703,7 @@ fn mft_outputs(r: &mut Run, mft: &Mft, file: &Path) -> bool {
     let mut exported = true;
 
     let mut body = None;
-    if let Some(dir) = a.body.clone() {
+    if let Some(dir) = outs.body.clone() {
         if !create_dir(&dir, "--body", &mut r.log) {
             return false;
         }
@@ -493,7 +719,7 @@ fn mft_outputs(r: &mut Run, mft: &Mft, file: &Path) -> bool {
     }
     let mut csv = None;
     let mut listing = None;
-    if let Some(dir) = r.args.csv.clone() {
+    if let Some(dir) = outs.csv.clone() {
         if !create_dir(&dir, "--csv", &mut r.log) {
             return false;
         }
@@ -525,7 +751,7 @@ fn mft_outputs(r: &mut Run, mft: &Mft, file: &Path) -> bool {
         }
     }
     let mut json = None;
-    if let Some(dir) = r.args.json.clone() {
+    if let Some(dir) = outs.json.clone() {
         if !create_dir(&dir, "--json", &mut r.log) {
             return false;
         }
@@ -540,7 +766,7 @@ fn mft_outputs(r: &mut Run, mft: &Mft, file: &Path) -> bool {
         }
     }
 
-    let resident_dir = r.args.dr.then(|| r.args.json.clone().or(r.args.csv.clone()).map(|d| d.join("Resident"))).flatten();
+    let resident_dir = outs.resident.clone();
     if let Some(d) = &resident_dir {
         r.log.info(&format!("\tResident data will be saved to {}", d.display()));
         let _ = std::fs::create_dir_all(d);
@@ -565,6 +791,7 @@ fn mft_outputs(r: &mut Run, mft: &Mft, file: &Path) -> bool {
             cutoff: r.cutoff,
             dump_resident: resident_dir.is_some(),
             source_file: source.clone(),
+            date_format: r.args.dt.clone(),
         };
         let bdl = r.args.bdl.as_deref().unwrap_or("").chars().next().map(|c| c.to_string()).unwrap_or_default();
         let nl = if r.args.blf { "\n" } else { "\r\n" };
@@ -729,6 +956,31 @@ fn process_boot(r: &mut Run, file: &Path) -> bool {
     }
     r.log.info(&format!("\nProcessed {} in {:.4} seconds\n", file.display(), sw.elapsed().as_secs_f64()));
     let mut csv = None;
+    let mut ok = true;
+    if let Some(dir) = r.args.json.clone() {
+        use ez_common::json::ServiceStackObject;
+        let cluster = b.bytes_per_sector.wrapping_mul(b.sectors_per_cluster);
+        let mut j = ServiceStackObject::new();
+        j.string("EntryPoint", Some(&b.boot_entry_point))
+            .string("Signature", Some(&b.file_system_signature))
+            .number("BytesPerSector", b.bytes_per_sector)
+            .number("SectorsPerCluster", b.sectors_per_cluster)
+            .number("ClusterSize", cluster)
+            .number("ReservedSectors", b.reserved_sectors)
+            .number("TotalSectors", b.total_sectors)
+            .number("MftClusterBlockNumber", b.mft_cluster_block_number)
+            .number("MftMirrClusterBlockNumber", b.mirror_mft_cluster_block_number)
+            .number("MftEntrySize", b.mft_entry_size)
+            .number("IndexEntrySize", b.index_entry_size)
+            .string("VolumeSerialNumberRaw", Some(&format!("0x{:X}", b.volume_serial_number_raw)))
+            .string("VolumeSerialNumber", Some(&b.volume_serial_number(false, false)))
+            .string("VolumeSerialNumber32", Some(&b.volume_serial_number(true, false)))
+            .string("VolumeSerialNumber32Reverse", Some(&b.volume_serial_number(true, true)))
+            .string("SectorSignature", Some(&b.sector_signature_text()))
+            .string("SourceFile", Some(&file.to_string_lossy()));
+        let line = format!("{}{}", j.finish(), ez_common::dotnet::NEW_LINE);
+        ok &= write_json_lines(r, &dir, "$Boot", &line);
+    }
     if let Some(dir) = r.args.csv.clone() {
         if !create_dir(&dir, "--csv", &mut r.log) {
             return false;
@@ -789,7 +1041,7 @@ fn process_boot(r: &mut Run, file: &Path) -> bool {
             return false;
         }
     }
-    true
+    ok
 }
 
 /// .NET's N0 for signed numbers
@@ -808,13 +1060,10 @@ fn process_sds(r: &mut Run, file: &Path) -> bool {
     r.log.info(&format!("\nProcessed {} in {:.4} seconds\n", file.display(), sw.elapsed().as_secs_f64()));
     let source = file.to_string_lossy().into_owned();
     r.log.info(&format!("SDS entries found in {source}: {}", n0(sds.entries.len() as u64)));
-    if let Some(dir) = r.args.csv.clone() {
-        if !create_dir(&dir, "--csv", &mut r.log) {
-            return false;
-        }
-        let p = out_name(r, &dir, &r.args.csvf, "$SDS", "csv");
-        r.log.info(&format!("\tCSV output will be saved to {}", p.display()));
+    let mut ok = true;
+    if r.args.csv.is_some() || r.args.json.is_some() {
         let mut out = String::from("Hash,Id,Offset,OwnerSid,GroupSid,Control,SaclAceCount,UniqueSaclAceTypes,DaclAceCount,UniqueDaclAceTypes,FileOffset,SourceFile,FromMirror\r\n");
+        let mut json = String::new();
         for e in &sds.entries {
             let sd = &e.security_descriptor;
             let unique = |acl: &Acl| {
@@ -826,35 +1075,63 @@ fn process_sds(r: &mut Run, file: &Path) -> bool {
                 }
                 seen.join("|")
             };
-            let (mut sacl_count, mut sacl_types) = (0u16, String::new());
+            let (mut sacl_count, mut sacl_types) = (0u16, None);
             if let Some(s) = sd.sacl().filter(|s| !s.raw.is_empty()) {
                 sacl_count = s.ace_count();
-                sacl_types = unique(&s);
+                sacl_types = Some(unique(&s));
             }
-            let (mut dacl_count, mut dacl_types) = (0u16, String::new());
+            let (mut dacl_count, mut dacl_types) = (0u16, None);
             if let Some(d) = sd.dacl() {
                 dacl_count = d.ace_count();
-                dacl_types = unique(&d);
+                dacl_types = Some(unique(&d));
             }
+            let (hash, owner, group) = (e.hash(), sd.owner_sid(), sd.group_sid());
+            let control = flags_name(sd.control() as i64, CONTROL_NAMES).replace(", ", "|");
             out.push_str(&csv_line(&[
-                e.hash(),
+                hash.clone(),
                 e.id.to_string(),
                 e.offset.to_string(),
-                sd.owner_sid(),
-                sd.group_sid(),
-                flags_name(sd.control() as i64, CONTROL_NAMES).replace(", ", "|"),
+                owner.clone(),
+                group.clone(),
+                control.clone(),
                 sacl_count.to_string(),
-                sacl_types,
+                sacl_types.clone().unwrap_or_default(),
                 dacl_count.to_string(),
-                dacl_types,
+                dacl_types.clone().unwrap_or_default(),
                 e.file_offset.to_string(),
                 source.clone(),
                 bool_text(e.from_mirror),
             ]));
+            let mut j = ez_common::json::ServiceStackObject::new();
+            j.string("Hash", Some(&hash))
+                .number("Id", e.id)
+                .number("Offset", e.offset)
+                .string("OwnerSid", Some(&owner))
+                .string("GroupSid", Some(&group))
+                .string("Control", Some(&control))
+                .number("SaclAceCount", sacl_count)
+                .string("UniqueSaclAceTypes", sacl_types.as_deref())
+                .number("DaclAceCount", dacl_count)
+                .string("UniqueDaclAceTypes", dacl_types.as_deref())
+                .number("FileOffset", e.file_offset)
+                .string("SourceFile", Some(&source))
+                .bool("FromMirror", e.from_mirror);
+            json.push_str(&j.finish());
+            json.push_str(ez_common::dotnet::NEW_LINE);
         }
-        if let Err(e) = open_out(&p, true).and_then(|mut w| w.write_all(out.as_bytes()).and_then(|_| w.flush())) {
-            r.log.error(&format!("There was an error loading the file! Error: {e}"));
-            return false;
+        if let Some(dir) = r.args.csv.clone() {
+            if !create_dir(&dir, "--csv", &mut r.log) {
+                return false;
+            }
+            let p = out_name(r, &dir, &r.args.csvf, "$SDS", "csv");
+            r.log.info(&format!("\tCSV output will be saved to {}", p.display()));
+            if let Err(e) = open_out(&p, true).and_then(|mut w| w.write_all(out.as_bytes()).and_then(|_| w.flush())) {
+                r.log.error(&format!("Error exporting to CSV. Please report to saericzimmerman@gmail.com. Error: {e}"));
+                ok = false;
+            }
+        }
+        if let Some(dir) = r.args.json.clone() {
+            ok &= write_json_lines(r, &dir, "$SDS", &json);
         }
         r.log.info("");
     }
@@ -869,7 +1146,7 @@ fn process_sds(r: &mut Run, file: &Path) -> bool {
         };
         let Some(e) = sds.entries.iter().find(|e| e.id as i64 == id as i64) else {
             r.log.warning(&format!("Could not find entry with Id: {id}"));
-            return true;
+            return ok;
         };
         let sd = &e.security_descriptor;
         let l = &mut r.log;
@@ -902,7 +1179,7 @@ fn process_sds(r: &mut Run, file: &Path) -> bool {
             dump(l, &s);
         }
     }
-    true
+    ok
 }
 
 fn process_i30(r: &mut Run, file: &Path) -> bool {
@@ -928,7 +1205,21 @@ fn process_i30(r: &mut Run, file: &Path) -> bool {
         n0(active as u64),
         n0((i30.entries.len() - active) as u64)
     ));
-    let dir = r.args.csv.clone().unwrap();
+    // with -m: the path of the directory each entry is in (issue #194); empty without -m
+    let parent_paths: Vec<String> = i30
+        .entries
+        .iter()
+        .map(|e| r.mft.as_ref().map(|m| m.full_path(e.file_info.as_ref().unwrap().parent.key()).into_owned()).unwrap_or_default())
+        .collect();
+    let source = file.to_string_lossy().into_owned();
+    let mut ok = true;
+    if let Some(dir) = r.args.json.clone() {
+        ok &= write_i30_json(r, &dir, &i30, &parent_paths, &source);
+    }
+    let Some(dir) = r.args.csv.clone() else {
+        r.log.info("");
+        return ok;
+    };
     if !create_dir(&dir, "--csv", &mut r.log) {
         return false;
     }
@@ -938,9 +1229,8 @@ fn process_i30(r: &mut Run, file: &Path) -> bool {
     let bad_dt = Timestamp::check_format(&dt).is_err();
     let used = if bad_dt { ez_common::csv::BAD_DATE } else { dt.as_str() };
     let time = |raw: i64| Timestamp::from_filetime(raw).filter(|_| raw > 0).map(|t| t.format(used)).unwrap_or_default();
-    let source = file.to_string_lossy().into_owned();
-    let mut out = String::from("Offset,FromSlack,SelfMftEntry,SelfMftSequence,FileName,Flags,NameType,ParentMftEntry,ParentMftSequence,CreatedOn,ContentModifiedOn,RecordModifiedOn,LastAccessedOn,PhysicalSize,LogicalSize,SourceFile\r\n");
-    for e in &i30.entries {
+    let mut out = String::from("Offset,FromSlack,SelfMftEntry,SelfMftSequence,FileName,Flags,NameType,ParentMftEntry,ParentMftSequence,CreatedOn,ContentModifiedOn,RecordModifiedOn,LastAccessedOn,PhysicalSize,LogicalSize,SourceFile,ParentPath\r\n");
+    for (e, parent_path) in i30.entries.iter().zip(&parent_paths) {
         let fi = e.file_info.as_ref().unwrap();
         out.push_str(&csv_line(&[
             e.absolute_offset.to_string(),
@@ -959,6 +1249,7 @@ fn process_i30(r: &mut Run, file: &Path) -> bool {
             fi.physical_size.to_string(),
             fi.logical_size.to_string(),
             source.clone(),
+            parent_path.clone(),
         ]));
         if bad_dt && out.contains(ez_common::csv::BAD_DATE) {
             break;
@@ -975,7 +1266,58 @@ fn process_i30(r: &mut Run, file: &Path) -> bool {
         return false;
     }
     r.log.info("");
+    ok
+}
+
+/// JSON lines (ServiceStack: properties in order, nulls left out, NameType by name)
+fn write_json_lines(r: &mut Run, dir: &Path, kind: &str, lines: &str) -> bool {
+    if !create_dir(dir, "--json", &mut r.log) {
+        return false;
+    }
+    let p = out_name(r, dir, &r.args.jsonf, kind, "json");
+    r.log.info(&format!("\tJSON output will be saved to {}", p.display()));
+    if let Err(e) = open_out(&p, false).and_then(|mut w| w.write_all(lines.as_bytes()).and_then(|_| w.flush())) {
+        r.log.error(&format!("\nError exporting to JSON. Please report to saericzimmerman@gmail.com. Error: {e}"));
+        return false;
+    }
     true
+}
+
+fn json_time(j: &mut ez_common::json::ServiceStackObject, name: &str, raw: i64) {
+    if let Some(t) = Timestamp::from_filetime(raw).filter(|_| raw > 0) {
+        j.raw(name, &format!("\"{}\"", t.to_json_string()));
+    }
+}
+
+fn write_i30_json(r: &mut Run, dir: &Path, i30: &ntfs_ez::i30::I30, parent_paths: &[String], source: &str) -> bool {
+    use ez_common::json::ServiceStackObject;
+    use ez_common::net::flags_name;
+    use ntfs_ez::mft::attributes::{NAME_TYPE_NAMES, SI_FLAG_NAMES};
+    let mut out = String::new();
+    for (e, parent_path) in i30.entries.iter().zip(parent_paths) {
+        let fi = e.file_info.as_ref().unwrap();
+        let mut j = ServiceStackObject::new();
+        j.number("Offset", e.absolute_offset).bool("FromSlack", e.from_slack);
+        if let Some(m) = e.mft_reference_self {
+            j.number("SelfMftEntry", m.entry).number("SelfMftSequence", m.sequence);
+        }
+        j.string("FileName", Some(&fi.file_name))
+            .string("Flags", Some(&flags_name(fi.flags as i64, SI_FLAG_NAMES).replace(", ", "|")))
+            .string("NameType", Some(&flags_name(fi.name_type as i64, NAME_TYPE_NAMES)))
+            .number("ParentMftEntry", fi.parent.entry)
+            .number("ParentMftSequence", fi.parent.sequence);
+        json_time(&mut j, "CreatedOn", fi.created);
+        json_time(&mut j, "ContentModifiedOn", fi.content_modified);
+        json_time(&mut j, "RecordModifiedOn", fi.record_modified);
+        json_time(&mut j, "LastAccessedOn", fi.last_accessed);
+        j.number("PhysicalSize", fi.physical_size)
+            .number("LogicalSize", fi.logical_size)
+            .string("SourceFile", Some(source))
+            .string("ParentPath", Some(parent_path));
+        out.push_str(&j.finish());
+        out.push_str(ez_common::dotnet::NEW_LINE);
+    }
+    write_json_lines(r, dir, "$I30", &out)
 }
 
 /// LoadLogFile: parses with 4096 byte clusters, then again with the cluster size that makes the logged FILE records'

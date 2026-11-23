@@ -26,6 +26,16 @@ Options: `-f`, `-m`, `--csv/--csvf`, `--json/--jsonf`, `--body/--bodyf/--bdl/--b
 `--dr`, `--ds`, `--dt`, `--sn`, `--fl`, `--at`, `--rs`, `--ir/--re/--rm`, `--cutoff`, `--debug/--trace`, `--co`.
 File type detected from the content, as `GetFileType` does.
 
+2026.11 (upstream `2612386`, MFTECmd 2026.11.1): `-d <folder>` (every file named `$MFT*` but `$MFTMirr*` under it that is an $MFT, each
+processed into a numbered folder of `.MFTECmd_<time>_d` in each output folder, then joined by file name, CSVs keeping one header, and the
+temporary folder deleted; not with `-m`, `--vss`, `--de`, `--dd`, `--dr`); `-m` with `-f $I30` (a new last column, `ParentPath`, empty
+without `-m`); `--mno` (the `-m` $MFT is only used for the paths); JSON for $Boot, $SDS and $I30; JSON enums by name (`SiFlags`,
+`NameType`, as in the CSV); `ResidentDataDecoded` after `ParseErrors` (`ntfs-ez::mft::resident`: Recycle Bin `$I` files, in use and
+free, always; with `--ir`, UTF-16 text the ASCII column can't show). Kept as the original does it: the joined bodyfile of `-d` has each
+part's byte order mark, and a `--bodyf` ending in `.csv` loses each later part's first line (the join skips a CSV's header). Compared
+with the original on the repositories' samples, a `-d` folder (nested, `$mft_old`, a `$MFTMirr` and a non-$MFT `$MFT*`), $I30 with
+and without `-m`, and two real extractions (870 `$I` rows): all 143 outputs identical.
+
 ## Rules kept from the original
 
 - CSV columns and their order per type (`MFTRecordOut`, `JEntryOut`, `LogFileOut`, `I30Out`, `SdsOut`, `BootOut`);

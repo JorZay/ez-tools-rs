@@ -121,9 +121,11 @@ recovered on Windows 8 to 11. `tools/parity-appcompatcache.sh` compares with the
 ## mftecmd
 
 A port of MFTECmd: $MFT, $J, $LogFile, $Boot, $Secure:$SDS and $I30 to CSV, JSON and bodyfile, with MFTECmd's
-options (`-f`, `-m`, `--csv/--csvf`, `--json/--jsonf`, `--body/--bodyf/--bdl/--blf`, `--de`, `--fls`, `--dd/--do`,
-`--dr`, `--ds`, `--dt`, `--sn`, `--fl`, `--at`, `--rs`, `--ir/--re/--rm`, `--cutoff`, `--co`) and output names. The file
-type is detected from the content.
+options (`-f`, `-d`, `-m`, `--mno`, `--csv/--csvf`, `--json/--jsonf`, `--body/--bodyf/--bdl/--blf`, `--de`, `--fls`,
+`--dd/--do`, `--dr`, `--ds`, `--dt`, `--sn`, `--fl`, `--at`, `--rs`, `--ir/--re/--rm`, `--cutoff`, `--co`) and output names.
+The file type is detected from the content. As MFTECmd 2026.11: `-d` puts every $MFT under a folder into one output,
+`-m` gives $I30 its `ParentPath` too, `--mno` leaves out the `-m` $MFT's own output, every type writes JSON, and the
+$MFT output ends with `ResidentDataDecoded` (Recycle Bin `$I` files, and UTF-16 text with `--ir`).
 
 ```sh
 mftecmd -f '/cases/C/$MFT' --csv out
@@ -131,6 +133,7 @@ mftecmd -f '/cases/C/$J' -m '/cases/C/$MFT' --csv out      # parent paths as the
 mftecmd -f '/cases/C/$LogFile' -m '/cases/C/$MFT' --json out
 mftecmd -f '/cases/C/$MFT' --body out --bdl c
 mftecmd -f '/cases/C/$MFT' --de 0x270-5
+mftecmd -d /cases/triage --csv out                         # every $MFT* under the folder, SourceFile tells them apart
 ```
 
 The library (`ntfs-ez`) memory maps the $MFT and reads it in two parallel passes instead of holding every record in
