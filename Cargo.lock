@@ -1085,6 +1085,7 @@ dependencies = [
  "clap",
  "ez-common",
  "fancy-regex",
+ "guidmapping-ez",
  "registry-ez",
  "registry-plugins",
  "sha1",

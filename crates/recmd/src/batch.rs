@@ -34,28 +34,7 @@ const HIVE_TYPES: &[(&str, i64)] = &[
     ("Registry", 21),
 ];
 
-const BIN_CONVERTS: &[(&str, i64)] = &[
-    ("None", 0),
-    ("Filetime", 1),
-    ("Ip", 2),
-    ("Epoch", 3),
-    ("Sid", 4),
-    ("Systemtime", 5),
-    ("DateTimeTicks", 6),
-    ("OLE", 7),
-];
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BinConvert {
-    None,
-    Filetime,
-    Ip,
-    Epoch,
-    Sid,
-    Systemtime,
-    DateTimeTicks,
-    Ole,
-}
+pub use crate::convert::BIN_CONVERTS;
 
 /// A Keys entry of a batch file
 #[derive(Debug, Default, Clone)]
@@ -75,20 +54,6 @@ pub struct BatchKey {
 impl BatchKey {
     pub fn hive_type_name(&self) -> String {
         net::enum_name(self.hive_type, HIVE_TYPES)
-    }
-
-    fn convert(&self) -> Option<BinConvert> {
-        Some(match self.binary_convert {
-            0 => BinConvert::None,
-            1 => BinConvert::Filetime,
-            2 => BinConvert::Ip,
-            3 => BinConvert::Epoch,
-            4 => BinConvert::Sid,
-            5 => BinConvert::Systemtime,
-            6 => BinConvert::DateTimeTicks,
-            7 => BinConvert::Ole,
-            _ => return None,
-        })
     }
 }
 
@@ -474,8 +439,6 @@ impl Row {
     }
 }
 
-const NULL_REFERENCE: &str = "Object reference not set to an instance of an object.";
-
 /// BuildBatchCsvOut. Warnings (conversions that failed) go to `warn`.
 pub fn build_row(hive: &Hive, k: KeyId, key: &BatchKey, value: Option<VkId>, dt: &str, warn: &mut Vec<String>) -> NetResult<Row> {
     let nk = hive.nk(k);
@@ -505,134 +468,34 @@ pub fn build_row(hive: &Hive, k: KeyId, key: &BatchKey, value: Option<VkId>, dt:
         let v = value.unwrap();
         row.value_data = "(Binary data)".into();
         if key.include_binary {
-            let raw = hive.value_raw(v)?;
-            row.value_data = match key.convert() {
-                Some(BinConvert::Filetime) => convert(filetime(&raw, dt), "Error converting to FILETIME. Using bytes instead!", v, hive, warn)?,
-                Some(BinConvert::Ip) => match net::u32_at(&raw, 0) {
-                    Ok(_) => format!("{}.{}.{}.{}", raw[0], raw[1], raw[2], raw[3]),
-                    Err(e) => {
-                        warn.push(format!("Error converting to IP address. Using bytes instead! Error: {e}"));
-                        data(v)?
-                    }
-                },
-                Some(BinConvert::Epoch) => convert(epoch(&raw, dt), "Error converting to Epoch. Using bytes instead!", v, hive, warn)?,
-                Some(BinConvert::Sid) => convert(sid(&raw), "Error converting to SID. Using bytes instead!", v, hive, warn)?,
-                Some(BinConvert::Systemtime) => {
-                    convert(systemtime(&raw, dt), "Error converting to SYSTEMTIME. Using bytes instead!", v, hive, warn)?
-                }
-                Some(BinConvert::DateTimeTicks) => {
-                    convert(ticks(&raw, dt), "Error converting to DateTime.Ticks. Using bytes instead!", v, hive, warn)?
-                }
-                Some(BinConvert::Ole) => {
-                    convert(ole(&raw, dt), "Error converting to OLE Automation Date OLE2.0. Using bytes instead!", v, hive, warn)?
-                }
-                _ => data(v)?,
-            };
+            row.value_data = data(v)?;
+            convert(hive, v, key, &mut row, dt, warn)?;
         }
         return Ok(row);
     }
-    row.value_data = match value {
-        Some(v) => data(v)?,
-        None => String::new(),
-    };
-    let message = match key.convert() {
-        Some(BinConvert::Epoch) => "Error converting to Epoch. Using bytes instead!",
-        Some(BinConvert::Filetime) => "Error converting to FILETIME. Using bytes instead!",
-        Some(BinConvert::Systemtime) => "Error converting to SYSTEMTIME. Using bytes instead!",
-        Some(BinConvert::DateTimeTicks) => "Error converting to DateTime.Ticks. Using bytes instead!",
-        Some(BinConvert::Ole) => "Error converting to OLE Automation Date OLE2.0. Using bytes instead!",
-        _ => return Ok(row),
-    };
-    let Some(v) = value else {
-        // the value is null: the conversion throws, and so does the fallback in its catch
-        warn.push(message.into());
-        return Err(NULL_REFERENCE.into());
-    };
-    let raw = hive.value_raw(v)?;
-    let result = match key.convert() {
-        Some(BinConvert::Epoch) => epoch(&raw, dt),
-        Some(BinConvert::Filetime) => filetime(&raw, dt),
-        Some(BinConvert::Systemtime) => systemtime(&raw, dt),
-        Some(BinConvert::DateTimeTicks) => ticks(&raw, dt),
-        _ => ole(&raw, dt),
-    };
-    row.value_data = convert(result, message, v, hive, warn)?;
+    if let Some(v) = value {
+        row.value_data = data(v)?;
+        convert(hive, v, key, &mut row, dt, warn)?;
+    }
     Ok(row)
 }
 
-fn convert(r: Result<String, String>, message: &str, v: VkId, hive: &Hive, warn: &mut Vec<String>) -> NetResult<String> {
-    match r {
-        Ok(s) => Ok(s),
-        Err(_) => {
-            warn.push(message.into());
-            Ok(hive.value_data(v)?.text())
-        }
+/// BinaryConvert (any value type, RECmd 2026.11): when the conversion doesn't fit, the data stays as it is
+fn convert(hive: &Hive, v: VkId, key: &BatchKey, row: &mut Row, dt: &str, warn: &mut Vec<String>) -> NetResult<()> {
+    if key.binary_convert == 0 {
+        return Ok(());
     }
-}
-
-fn filetime(raw: &[u8], dt: &str) -> Result<String, String> {
-    let ft = net::u64_at(raw, 0)? as i64;
-    Ok(registry_ez::cells::filetime(ft)?.format(dt))
-}
-
-fn epoch(raw: &[u8], dt: &str) -> Result<String, String> {
-    let s = net::u32_at(raw, 0)? as i64;
-    Ok(Timestamp(621_355_968_000_000_000 + s * 10_000_000).format(dt))
-}
-
-fn ticks(raw: &[u8], dt: &str) -> Result<String, String> {
-    let t = net::i64_at(raw, 0)?;
-    if !(0..=ez_common::time::MAX_TICKS).contains(&t) {
-        return Err("Ticks must be between DateTime.MinValue.Ticks and DateTime.MaxValue.Ticks.".into());
+    let raw = hive.value_raw(v)?;
+    match crate::convert::try_convert(key.binary_convert, &row.value_type, &raw, &row.value_data, dt) {
+        Some(converted) => row.value_data = converted,
+        None => warn.push(format!(
+            "Error converting {} ({}) with {}. Using the data as it is!",
+            row.value_name.as_deref().unwrap_or(""),
+            row.value_type,
+            net::enum_name(key.binary_convert, BIN_CONVERTS)
+        )),
     }
-    Ok(Timestamp(t).format(dt))
-}
-
-fn systemtime(raw: &[u8], dt: &str) -> Result<String, String> {
-    let mut f = [0i32; 8];
-    for (i, v) in f.iter_mut().enumerate() {
-        *v = net::i16_at(raw, i as i64 * 2)? as i32;
-    }
-    let (y, mo, d, h, mi, s, ms) = (f[0], f[1], f[3], f[4], f[5], f[6], f[7]);
-    if !(0..1000).contains(&ms) || !(0..24).contains(&h) || !(0..60).contains(&mi) || !(0..60).contains(&s) {
-        return Err("invalid".into());
-    }
-    let t = Timestamp::from_parts(y, mo.max(0) as u32, d.max(0) as u32, h as u32, mi as u32, s as u32, ms as u32 * 10_000)
-        .ok_or("invalid")?;
-    Ok(t.format(dt))
-}
-
-/// DateTime.FromOADate
-fn ole(raw: &[u8], dt: &str) -> Result<String, String> {
-    let d = f64::from_bits(net::u64_at(raw, 0)?);
-    if !(d > -657435.0 && d < 2958466.0) {
-        return Err("Not a legal OleAut date.".into());
-    }
-    const MS_PER_DAY: i64 = 86_400_000;
-    let mut ms = (d * MS_PER_DAY as f64 + if d >= 0.0 { 0.5 } else { -0.5 }) as i64;
-    if ms < 0 {
-        ms -= (ms % MS_PER_DAY) * 2;
-    }
-    // 1899-12-30 in milliseconds
-    ms += 59_926_435_200_000;
-    if !(0..=315_537_897_599_999).contains(&ms) {
-        return Err("Not a legal OleAut date.".into());
-    }
-    Ok(Timestamp(ms * 10_000).format(dt))
-}
-
-/// SecurityIdentifier(bytes, 0).ToString(), as on Windows
-fn sid(raw: &[u8]) -> Result<String, String> {
-    if raw.len() < 8 || raw[0] != 1 || raw[1] > 15 || raw.len() < 8 + 4 * raw[1] as usize {
-        return Err("invalid SID".into());
-    }
-    let authority = raw[2..8].iter().fold(0u64, |a, &b| (a << 8) | b as u64);
-    let mut s = format!("S-1-{authority}");
-    for i in 0..raw[1] as usize {
-        let o = 8 + 4 * i;
-        s.push_str(&format!("-{}", u32::from_le_bytes(raw[o..o + 4].try_into().unwrap())));
-    }
-    Ok(s)
+    Ok(())
 }
 
 /// The row of a plugin's output: BatchDumpKey's BatchCsvOut. The key path is the key the batch file reached, not the row's

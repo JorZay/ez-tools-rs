@@ -1,6 +1,7 @@
 //! recmd: registry hives searched, dumped and processed with batch files (to CSV or JSON), as RECmd does it.
 
 mod batch;
+mod convert;
 mod details;
 #[cfg(feature = "sync")]
 mod sync;

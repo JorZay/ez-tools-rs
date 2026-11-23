@@ -4,6 +4,12 @@ Status: core done (2026-11-02): `registry-ez` and `recmd`. All 69 plugins done (
 
 ## Done: the core
 
+2026.11 (upstream `f44327c`, RECmd 2026.11.0, issue #117): `BinaryConvert` has 23 conversions and works on every value type
+(`crates/recmd/src/convert.rs`, a port of `ValueConverter`): binary and number values are read from their bytes, string values as
+text, and as a number (decimal, `0x` hex or a double) for the ones that want one. A conversion that doesn't fit leaves the data as
+it is, with a warning; a key-only row is no longer an error. `tools/gen-recmd-binconvert.py` makes a hive with 90 values of every
+type and a batch file with each conversion; CSV, JSON and a custom `--dt` are identical to the original's.
+
 - `registry-ez`: hbins, nk/vk/lk/sk/lists, slack carving, deleted keys and values, value data of every type (big
   data, UWP types), transaction log replay (HvLE with Marvin32, and DIRT), the searches.
 - `recmd`: `-f/-d`, `--bn` (CSV and JSON), `--sa/--sk/--sv/--sd/--ss` with `--regex/--literal/--nd`, `--kn/--vn/--saveTo`,
