@@ -22,19 +22,34 @@ port is brought up to date.
 | `sumecmd`, `sum-ez` | EricZimmerman/Sum | `d2f5cb3c644654d17bb51c22acbc8e6289e52237` | 2026-10-25 | 2026.10.1 | Exact |
 | `lnk-ez` | EricZimmerman/Lnk | `dab1c8ab9c1c18d2cf89a4938ab95794d17d3a44` | | 2026.10.11 | Exact |
 | `shellitems-ez` | EricZimmerman/ExtensionBlocks | `897bbe3` (the later commit changes only CLAUDE.md) | | 2026.10.9 | Exact |
-| `recmd` | EricZimmerman/RECmd | `8d1955910964209500b6f74f169e3e52554838d7` | | 2026.10.3 | Exact |
-| `rla` | EricZimmerman/RECmd | `8d1955910964209500b6f74f169e3e52554838d7` | 2026-10-29 | 2026.10.1 | Exact |
+| `recmd` | EricZimmerman/RECmd | `f44327c464c6e07bd40e345243197d3d1dbae782` | 2026-11-21 | 2026.11.0 | Exact |
+| `rla` | EricZimmerman/RECmd | `f44327c464c6e07bd40e345243197d3d1dbae782` | 2026-11-21 | 2026.10.1 | Exact |
 | `registry-plugins` | EricZimmerman/RegistryPlugins | `bf564d6c4fcabf67b5ce4428ddf5e4a769b1e9ba` | 2026-10-29 | RegistryPluginBase 2026.10.7 | Exact (all 69 ported) |
 | `guidmapping-ez` | EricZimmerman/GuidMapping | `e2c93615a491ca43197b36960a436b559062cb52` | | 2026.10.2 | Exact |
 | `registry-ez` | EricZimmerman/Registry | `de0bdbbea699637fe0e7b519c9f7fc07aafb173a` (tag 2026.10.1, the NuGet package's) | 2026-10-22 | 2026.10.1 | From the tag |
-| `evtxecmd`, `evtx-ez` | EricZimmerman/evtx | `fbf2f66736669689bfb95f735f7eca86d29d9800` for the code; `maps/` from `68c4d55` | 2026-10-25; maps 2026-11-04 | | Estimate |
-| `mftecmd` | EricZimmerman/MFTECmd | `b1f668d870153f9a4c4073845265c0e6071ed09f` | 2026-10-25 | 2026.10.6 | Estimate |
+| `evtxecmd`, `evtx-ez` | EricZimmerman/evtx | `92e9dc5a4cad0531e27d1a697b9e700aa22294af` (code and `maps/`) | 2026-11-21 | 2026.11.0 | Exact |
+| `mftecmd` | EricZimmerman/MFTECmd | `2612386a177bc18d27aa2b051ab34e64fd5b6f16` | 2026-11-21 | 2026.11.1 | Exact |
 | `ntfs-ez` | EricZimmerman/MFT | `3eecafae50ac8935b239cf3ded690b11af5020f4` | 2026-10-24 | | Estimate |
 
 Exact: the commit that was cloned for the port. Estimate: the commit wasn't written down when the port was made, so
 this is upstream's latest commit before the port's first commit (2026-11-02); check it before relying on it.
 
 ## Updates
+
+- 2026-11-24: every repository checked against its latest commit (2026-11-20/21: the 2026.11 releases). Ported: EvtxECmd
+  2026.11.0 (`--rr`, and the walk goes on after damaged data), MFTECmd 2026.11.1 (`-d`, `--mno`, `-m` for $I30, JSON for
+  every type, enum names in JSON, `ResidentDataDecoded`), RECmd 2026.11.0 (BinaryConvert: 23 conversions on every value
+  type); the commits are in the table above. SumECmd 2026.11.0 (`0ae585e`: recursive `-d`, `SourceDirectory`) is ported on
+  the `sumecmd-2026.11` branch, waiting for a check against the original on Windows. Everything else
+  moved to CsvHelper 34.1.0, which each repository says writes CsvHelper 33's bytes, and dependabot bumps
+  (System.CommandLine 3.0.0, ServiceStack 10.5.0, Microsoft.Data.Sqlite 10.0.15, CodePages 10.0.15); the libraries
+  (Prefetch, MFT, Registry, RegistryPlugins, ExtensionBlocks, Lnk, JumpList, OleCf, GuidMapping) changed only tests and
+  packages. Checked with net10 builds of the new commits: AmcacheParser `90de8b2`, AppCompatCacheParser `07d51f7`,
+  PECmd `034df5e`, RBCmd `404cd31`, WxTCmd `56c5157`, rla `f44327c` identical on the two real extractions; LECmd
+  `66b9110`, JLECmd `c966c91`, SQLECmd `ea8ab71` too but for the known differences (Linux line ends in JSON text, the
+  Favicons tie order), RecentFileCacheParser `ae48a3c` on generated files; RECmd's plugin hives give the same
+  differences with the 2026.11 build as with the 2026.10 one (the known Linux ones). Not checked: SrumECmd `67fb809`
+  (Windows only; the VM was off).
 
 - 2026-11-08: every repository above checked against its latest commit. Only data and non-code changes since the ports'
   commits: evtx added the Network Diagnostics Framework maps (events 1000 and 2000), now in `maps/`, checked with the
